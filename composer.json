@@ -1,7 +1,13 @@
 {
-  "name": "rbe-pickleball",
+  "$schema": "https://getcomposer.org/schema.json",
+  "name": "rpc/rbe-pickleball",
   "description": "Rosales Pickleball Club — Vercel deployment root",
+  "type": "project",
   "require": {
     "php": "^8.2"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "sort-packages": true
   }
 }
