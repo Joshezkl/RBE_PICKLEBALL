@@ -5,29 +5,31 @@ use Illuminate\Support\Str;
 /**
  * @return array<int, mixed>
  */
-function mysqlSslOptions(): array
-{
-    if (! extension_loaded('pdo_mysql')) {
-        return [];
-    }
+if (! function_exists('mysqlSslOptions')) {
+    function mysqlSslOptions(): array
+    {
+        if (! extension_loaded('pdo_mysql')) {
+            return [];
+        }
 
-    $sslCaAttr = defined('Pdo\Mysql::ATTR_SSL_CA')
-        ? \Pdo\Mysql::ATTR_SSL_CA
-        : PDO::MYSQL_ATTR_SSL_CA;
-    $sslVerifyAttr = defined('Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')
-        ? \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT
-        : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT;
+        $sslCaAttr = defined('Pdo\Mysql::ATTR_SSL_CA')
+            ? \Pdo\Mysql::ATTR_SSL_CA
+            : PDO::MYSQL_ATTR_SSL_CA;
+        $sslVerifyAttr = defined('Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')
+            ? \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT
+            : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT;
 
-    $options = [];
-    if (env('MYSQL_ATTR_SSL_CA')) {
-        $options[$sslCaAttr] = env('MYSQL_ATTR_SSL_CA');
-    }
-    if (str_contains((string) env('DB_HOST', ''), 'tidbcloud.com')
-        || filter_var(env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT', false), FILTER_VALIDATE_BOOLEAN)) {
-        $options[$sslVerifyAttr] = false;
-    }
+        $options = [];
+        if (env('MYSQL_ATTR_SSL_CA')) {
+            $options[$sslCaAttr] = env('MYSQL_ATTR_SSL_CA');
+        }
+        if (str_contains((string) env('DB_HOST', ''), 'tidbcloud.com')
+            || filter_var(env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT', false), FILTER_VALIDATE_BOOLEAN)) {
+            $options[$sslVerifyAttr] = false;
+        }
 
-    return $options;
+        return $options;
+    }
 }
 
 return [
