@@ -1,8 +1,10 @@
 <?php
 
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -21,5 +23,14 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (QueryException $exception, Request $request) {
+            if (! $request->is('api/*') || ! $request->expectsJson()) {
+                return null;
+            }
+
+            return response()->json([
+                'message' => 'Database not connected. Add MySQL variables (DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD) in Vercel project settings, then redeploy.',
+                'error' => 'database_not_configured',
+            ], 503);
+        });
     })->create();

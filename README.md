@@ -223,7 +223,27 @@ Optional:
 | `API_BASE_URL` | Override auto same-origin URL (usually leave unset) |
 | `WS_HOST` / `WS_SCHEME` / `WS_KEY` | Reverb WebSockets (optional; polling works without) |
 
-**Database:** use any hosted MySQL (Vercel Marketplace integrations, PlanetScale, TiDB, etc.) and paste the connection vars above. SQLite is for local dev only.
+**Database:** Vercel does not include MySQL. You must add a hosted MySQL database and paste the connection vars above. Without this, `/api/health` works but admin pages show **Server Error**.
+
+#### Quick MySQL setup (TiDB Cloud — free tier)
+
+1. Go to [tidbcloud.com](https://tidbcloud.com) and create a free **Serverless** cluster.
+2. Create database `rpc_queue` in the console.
+3. Copy the MySQL connection host, user, password, and port.
+4. In **Vercel → Settings → Environment Variables**, add:
+
+```
+DB_CONNECTION=mysql
+DB_HOST=gateway01.us-west-2.prod.aws.tidbcloud.com   (your host)
+DB_PORT=4000                                          (TiDB often uses 4000)
+DB_DATABASE=rpc_queue
+DB_USERNAME=your_user
+DB_PASSWORD=your_password
+```
+
+5. Also set `APP_KEY`, `ADMIN_PIN`, `APP_URL`, `APP_ENV=production`, `APP_DEBUG=false`.
+6. **Redeploy** — migrations run automatically during build when `DB_HOST` is set.
+7. Verify: `https://your-app.vercel.app/api/health/db` → `{"status":"ok","database":"connected"}`
 
 **Remove** any old `API_BASE_URL` pointing to Railway or other external hosts, then redeploy.
 
@@ -231,7 +251,8 @@ Optional:
 
 1. Click **Deploy** (first build ~5–10 min).
 2. Test API: `https://your-app.vercel.app/api/health` → `{"status":"ok"}`
-3. Test app: `https://your-app.vercel.app/#/admin`
+3. Test database: `https://your-app.vercel.app/api/health/db` → `database: connected`
+4. Test app: `https://your-app.vercel.app/#/admin`
 
 ### 4. Public URLs (share or QR code)
 

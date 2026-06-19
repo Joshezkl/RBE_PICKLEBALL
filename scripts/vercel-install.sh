@@ -31,7 +31,8 @@ fi
 
 if [ -n "${APP_KEY:-}" ]; then
   if [ -n "${DB_HOST:-}" ] || [ "${DB_CONNECTION:-}" = "sqlite" ]; then
-    php artisan migrate --force --no-ansi || true
+    echo "==> Running database migrations"
+    php artisan migrate --force --no-ansi
   fi
 else
   echo "==> APP_KEY not set — skipping Laravel migrations"
