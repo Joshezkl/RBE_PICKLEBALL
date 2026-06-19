@@ -51,7 +51,7 @@ abstract final class RpcTheme {
         ),
         iconTheme: IconThemeData(color: palette.textMuted),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: palette.surface,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -140,7 +140,7 @@ abstract final class RpcTheme {
         thickness: isDark ? 1 : 1,
         space: 1,
       ),
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         backgroundColor: palette.elevatedSurface,
         elevation: isDark ? 8 : 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -202,7 +202,7 @@ abstract final class RpcTheme {
           return 1.5;
         }),
       ),
-      tabBarTheme: TabBarTheme(
+      tabBarTheme: TabBarThemeData(
         labelColor: palette.primary,
         unselectedLabelColor: palette.textMuted,
         indicatorColor: palette.primary,
