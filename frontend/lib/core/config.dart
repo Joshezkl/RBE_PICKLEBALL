@@ -52,6 +52,7 @@ class AppConfig {
     if (compileTime.isNotEmpty) return compileTime;
 
     if (apiBaseUrl.startsWith('https://')) return 'wss';
+    if (apiBaseUrl.startsWith('/')) return 'wss';
     return 'ws';
   }
 

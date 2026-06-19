@@ -1,7 +1,9 @@
-backend/
+backend/vendor/
+backend/node_modules/
+backend/storage/logs/
+backend/storage/framework/cache/data/
+backend/.env
 frontend/build/
 frontend/.dart_tool/
 .git/
 .github/
-*.md
-!README.md

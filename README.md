@@ -15,10 +15,11 @@ Digital queue and court management for open-play pickleball sessions. Features d
 
 ```
 RBE/
-├── backend/     # Laravel API (deploy separately from Vercel)
+├── api/         # Vercel serverless entry for Laravel (/api/*)
+├── backend/     # Laravel API
 ├── frontend/    # Flutter web app (Admin + Board views)
-├── scripts/     # Vercel/CI build helpers
-├── vercel.json  # Vercel frontend deployment config
+├── scripts/     # Vercel build helpers
+├── vercel.json  # Vercel deployment (frontend + API)
 └── README.md
 ```
 
@@ -177,15 +178,112 @@ flutter run -d chrome \
 
 Production (HTTPS) uses `wss` automatically when `API_BASE_URL` is `https://…`, or set `WS_SCHEME=wss` explicitly.
 
-## VPS Deployment (DigitalOcean / Hostinger)
+## Vercel Deployment (Frontend + API)
 
-1. Provision Ubuntu VPS with Nginx, PHP 8.2+, MySQL, Composer.
-2. Clone repo and configure `backend/.env` for production DB and `APP_URL`.
-3. Run `composer install --no-dev`, `php artisan migrate --force`, `php artisan config:cache`.
-4. Point Nginx to `backend/public`.
-5. Build Flutter web: `flutter build web --dart-define=API_BASE_URL=https://your-domain.com/api`
-6. Serve `frontend/build/web` via Nginx static site or subdirectory.
-7. Optional: run Reverb as a systemd service and proxy WebSocket on `/app`.
+Everything runs on **one Vercel project**: Flutter web at `/` and the Laravel API at `/api/*` on the same public URL (e.g. `https://rbe-pickleball.vercel.app`).
+
+### Architecture
+
+```
+https://your-app.vercel.app
+├── /#/admin, /#/board, …   → Flutter web (static)
+└── /api/*                  → Laravel (Vercel serverless PHP)
+```
+
+No separate API host is required. The app calls `/api` on the same domain — no CORS issues, no Railway or third-party API URL.
+
+### 1. Import to Vercel
+
+1. Import `RBE_PICKLEBALL` from GitHub at [vercel.com](https://vercel.com).
+2. Vercel reads `vercel.json` and runs `scripts/vercel-build.sh`.
+3. **Do not set `API_BASE_URL` to an external host** unless you intentionally use a separate API. Leave it unset — the build auto-sets it to `https://<your-vercel-domain>/api`.
+
+### 2. Required Vercel environment variables
+
+Add these in **Project → Settings → Environment Variables**:
+
+| Variable | Example | Required |
+|----------|---------|----------|
+| `APP_KEY` | From `php artisan key:generate --show` | Yes |
+| `APP_ENV` | `production` | Yes |
+| `APP_DEBUG` | `false` | Yes |
+| `APP_URL` | `https://rbe-pickleball.vercel.app` | Yes |
+| `ADMIN_PIN` | Strong PIN (not `1234`) | Yes |
+| `DB_CONNECTION` | `mysql` | Yes |
+| `DB_HOST` | From your MySQL provider | Yes |
+| `DB_PORT` | `3306` | Yes |
+| `DB_DATABASE` | `rpc_queue` | Yes |
+| `DB_USERNAME` | … | Yes |
+| `DB_PASSWORD` | … | Yes |
+
+Optional:
+
+| Variable | Purpose |
+|----------|---------|
+| `API_BASE_URL` | Override auto same-origin URL (usually leave unset) |
+| `WS_HOST` / `WS_SCHEME` / `WS_KEY` | Reverb WebSockets (optional; polling works without) |
+
+**Database:** use any hosted MySQL (Vercel Marketplace integrations, PlanetScale, TiDB, etc.) and paste the connection vars above. SQLite is for local dev only.
+
+**Remove** any old `API_BASE_URL` pointing to Railway or other external hosts, then redeploy.
+
+### 3. Deploy and verify
+
+1. Click **Deploy** (first build ~5–10 min).
+2. Test API: `https://your-app.vercel.app/api/health` → `{"status":"ok"}`
+3. Test app: `https://your-app.vercel.app/#/admin`
+
+### 4. Public URLs (share or QR code)
+
+| Audience | URL |
+|----------|-----|
+| Admin | `https://your-app.vercel.app/#/admin` |
+| Public board | `https://your-app.vercel.app/#/board` |
+| Check-in | Generated in admin (uses deployed origin) |
+| Court display | `https://your-app.vercel.app/#/court?n=1` |
+| Tournament display | `https://your-app.vercel.app/#/tournament-display` |
+
+### 5. Runtime configuration
+
+`frontend/web/env-config.js` is generated at build time. When `API_BASE_URL` is not set, it uses `https://<VERCEL_URL>/api` automatically.
+
+Priority: **Vercel env `API_BASE_URL`** → **auto same-origin `/api`** → **`--dart-define`** → local dev `localhost:8000`.
+
+### 6. Local build + Vercel CLI
+
+```powershell
+# Windows
+$env:API_BASE_URL = "http://localhost:8000/api"
+.\scripts\build-web.ps1
+npx vercel --prod
+```
+
+```bash
+# macOS/Linux
+export API_BASE_URL=http://localhost:8000/api
+bash scripts/vercel-build.sh
+```
+
+### 7. Production checklist
+
+- [ ] Removed external `API_BASE_URL` (Railway, etc.) from Vercel env
+- [ ] `APP_KEY`, `ADMIN_PIN`, and `DB_*` set on Vercel
+- [ ] `/api/health` returns OK on your Vercel URL
+- [ ] Admin, board, check-in QR, and tournament flows tested
+- [ ] `APP_DEBUG=false`
+
+### Local development
+
+```bash
+cd backend && php artisan serve
+cd frontend && flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000/api
+```
+
+Default admin PIN for local dev: **1234** (set `ADMIN_PIN` in `backend/.env`).
+
+## VPS Deployment (optional)
+
+For self-hosted full-stack on a single VPS (Nginx + PHP + MySQL + static Flutter build), see legacy steps: provision Ubuntu, point Nginx to `backend/public`, serve `frontend/build/web`, run Reverb optionally.
 
 ### Nginx WebSocket proxy snippet
 
@@ -198,109 +296,6 @@ location /app {
     proxy_set_header Host $host;
 }
 ```
-
-## Vercel Deployment (Frontend)
-
-The Flutter web app deploys to **Vercel**. The Laravel API must run on a separate host (VPS, Railway, Render, Fly.io, etc.) with a managed MySQL database.
-
-### Architecture
-
-```
-Vercel (Flutter static)  ──HTTPS──►  API host (Laravel + MySQL)
-https://your-app.vercel.app          https://api.yourdomain.com/api
-```
-
-### 1. Deploy the API
-
-1. Host `backend/` on your API provider (see `backend/Procfile` for a minimal Railway/Render start command).
-2. Set production `.env` values:
-
-```
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://api.yourdomain.com
-DB_CONNECTION=mysql
-DB_HOST=...
-ADMIN_PIN=your-strong-pin
-FRONTEND_URL=https://your-app.vercel.app
-```
-
-3. Run migrations: `php artisan migrate --force`
-
-Verify: `GET https://api.yourdomain.com/api/health`
-
-### 2. Deploy the frontend to Vercel
-
-**Option A — Connect repo to Vercel (recommended)**
-
-1. Import this repository in [Vercel](https://vercel.com).
-2. Set **Root Directory** to the repo root (default).
-3. Vercel reads `vercel.json` and runs `scripts/vercel-build.sh` (installs Flutter if needed).
-4. Add **Environment Variables** in the Vercel project:
-
-| Variable | Example | Required |
-|----------|---------|----------|
-| `API_BASE_URL` | `https://api.yourdomain.com/api` | Yes |
-| `WS_HOST` | `api.yourdomain.com` | Only if using Reverb |
-| `WS_SCHEME` | `wss` | Only if using Reverb |
-| `WS_KEY` | `rpc-key` | Only if using Reverb |
-
-5. Deploy. Vercel provides a public URL like `https://your-app.vercel.app`.
-
-**Option B — GitHub Actions**
-
-Set repository **Variables** (`API_BASE_URL`, etc.) and **Secrets** (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`). Pushes to `main` run `.github/workflows/deploy-vercel.yml`.
-
-**Option C — Local build + Vercel CLI**
-
-```powershell
-# Windows
-$env:API_BASE_URL = "https://api.yourdomain.com/api"
-.\scripts\build-web.ps1
-```
-
-```bash
-# macOS/Linux
-export API_BASE_URL=https://api.yourdomain.com/api
-bash scripts/vercel-build.sh
-```
-
-### 3. Public URLs (share or QR code)
-
-| Audience | URL |
-|----------|-----|
-| Admin | `https://your-app.vercel.app/#/admin` |
-| Public board | `https://your-app.vercel.app/#/board` |
-| Check-in | Generated in admin (uses deployed origin automatically) |
-| Court display | `https://your-app.vercel.app/#/court?n=1` |
-| Tournament display | `https://your-app.vercel.app/#/tournament-display` |
-
-Hash routes work on static hosting without extra server config.
-
-### 4. Runtime configuration
-
-`frontend/web/env-config.js` is generated at build time from Vercel environment variables. It is loaded before Flutter starts, so you can change `API_BASE_URL` in Vercel and redeploy without editing source code.
-
-Priority: **runtime env-config.js** → **`--dart-define`** → local dev defaults.
-
-### 5. Production checklist
-
-- [ ] `API_BASE_URL` points to HTTPS API (not localhost)
-- [ ] `ADMIN_PIN` changed from default on the API
-- [ ] `APP_DEBUG=false` on the API
-- [ ] Managed MySQL (not SQLite)
-- [ ] `FRONTEND_URL` set on API for CORS (optional; omit to allow all origins)
-- [ ] Test admin login, board polling, check-in QR, tournament flow
-- [ ] Optional Reverb: `WS_SCHEME=wss`, proxy `/app` on API host
-
-### Local development (unchanged)
-
-```bash
-cd backend && php artisan serve
-cd frontend && flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000/api
-```
-
-Default admin PIN for local dev: **1234** (set `ADMIN_PIN` in `backend/.env`).
 
 ## Running Tests
 

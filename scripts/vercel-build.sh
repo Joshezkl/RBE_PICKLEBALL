@@ -7,6 +7,23 @@ cd "$ROOT"
 echo "==> Generating runtime env-config.js"
 node scripts/generate-env-config.mjs frontend/web/env-config.js
 
+echo "==> Installing Laravel dependencies"
+cd "$ROOT/backend"
+if ! command -v composer >/dev/null 2>&1; then
+  echo "==> Composer not found — downloading"
+  curl -sS https://getcomposer.org/installer | php -- --install-dir="$ROOT" --filename=composer
+  export PATH="$ROOT:$PATH"
+fi
+composer install --no-dev --optimize-autoloader --no-interaction
+
+if [ -n "${APP_KEY:-}" ]; then
+  if [ -n "${DB_HOST:-}" ] || [ "${DB_CONNECTION:-}" = "sqlite" ]; then
+    php artisan migrate --force --no-ansi || true
+  fi
+else
+  echo "==> APP_KEY not set — skipping Laravel migrations"
+fi
+
 if ! command -v flutter >/dev/null 2>&1; then
   echo "==> Flutter not found — installing stable SDK"
   export FLUTTER_HOME="${FLUTTER_HOME:-$HOME/flutter}"
@@ -19,7 +36,7 @@ if ! command -v flutter >/dev/null 2>&1; then
 fi
 
 echo "==> Building Flutter web release"
-cd frontend
+cd "$ROOT/frontend"
 flutter pub get
 
 BUILD_ARGS=(build web --release)

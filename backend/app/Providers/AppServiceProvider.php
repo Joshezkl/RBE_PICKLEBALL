@@ -24,6 +24,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (getenv('VERCEL')) {
+            config([
+                'logging.default' => 'stderr',
+            ]);
+        }
+
         Route::bind('session', fn (string $value) => PlaySession::query()->findOrFail($value));
         Route::bind('match', fn (string $value) => MatchGame::query()->findOrFail($value));
         Route::bind('tournament', fn (string $value) => Tournament::query()->findOrFail($value));

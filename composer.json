@@ -1,0 +1,7 @@
+{
+  "name": "rbe-pickleball",
+  "description": "Rosales Pickleball Club — Vercel deployment root",
+  "require": {
+    "php": "^8.2"
+  }
+}
