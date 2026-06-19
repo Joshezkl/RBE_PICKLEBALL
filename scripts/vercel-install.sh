@@ -12,6 +12,17 @@ if [ -f "$ROOT/.vercel-php-path.sh" ]; then
   source "$ROOT/.vercel-php-path.sh"
 fi
 
+# Vercel build env can expose malformed HTTP_* vars that break artisan boot.
+export APP_URL="${APP_URL:-https://vercel-placeholder.local}"
+if [[ ! "$APP_URL" =~ ^https?:// ]]; then
+  APP_URL="${APP_URL#https://}"
+  APP_URL="${APP_URL#http://}"
+  export APP_URL="https://${APP_URL}"
+fi
+export REQUEST_URI="/"
+export SCRIPT_NAME="/index.php"
+unset HTTP_HOST HTTPS SERVER_NAME QUERY_STRING 2>/dev/null || true
+
 COMPOSER_BIN="${COMPOSER_BIN:-/tmp/composer}"
 if ! command -v composer >/dev/null 2>&1; then
   echo "==> Downloading Composer"
@@ -24,10 +35,13 @@ fi
 echo "==> Installing Laravel dependencies"
 cd "$ROOT/backend"
 if command -v composer >/dev/null 2>&1; then
-  composer install --no-dev --optimize-autoloader --no-interaction
+  composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
 else
-  "$COMPOSER_BIN" install --no-dev --optimize-autoloader --no-interaction
+  "$COMPOSER_BIN" install --no-dev --optimize-autoloader --no-interaction --no-scripts
 fi
+
+echo "==> Discovering Laravel packages"
+php artisan package:discover --ansi
 
 if [ -n "${APP_KEY:-}" ]; then
   if [ -n "${DB_HOST:-}" ] || [ "${DB_CONNECTION:-}" = "sqlite" ]; then
