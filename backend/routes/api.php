@@ -17,6 +17,15 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', fn () => response()->json(['status' => 'ok']));
 
 Route::get('/health/db', function () {
+    $configured = [
+        'db_connection' => (string) config('database.default'),
+        'db_host_set' => filled(config('database.connections.mysql.host')),
+        'db_database_set' => filled(config('database.connections.mysql.database')),
+        'db_username_set' => filled(config('database.connections.mysql.username')),
+        'db_password_set' => filled(config('database.connections.mysql.password')),
+        'pdo_mysql' => extension_loaded('pdo_mysql'),
+    ];
+
     try {
         \Illuminate\Support\Facades\DB::connection()->getPdo();
         $hasSessions = \Illuminate\Support\Facades\Schema::hasTable('play_sessions');
@@ -25,12 +34,15 @@ Route::get('/health/db', function () {
             'status' => 'ok',
             'database' => 'connected',
             'migrations' => $hasSessions ? 'ready' : 'pending',
+            'configured' => $configured,
         ]);
     } catch (\Throwable $exception) {
         return response()->json([
             'status' => 'error',
             'database' => 'not_connected',
-            'message' => 'Add DB_HOST, DB_DATABASE, DB_USERNAME, and DB_PASSWORD in Vercel, then redeploy.',
+            'message' => 'Database connection failed. Check DB_* env vars in Vercel, then redeploy.',
+            'configured' => $configured,
+            'error' => $exception->getMessage(),
         ], 503);
     }
 });

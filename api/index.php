@@ -17,6 +17,25 @@ if (getenv('VERCEL')) {
     }
     putenv("VIEW_COMPILED_PATH={$tmp}/views");
     $_ENV['VIEW_COMPILED_PATH'] = "{$tmp}/views";
+
+    // Ensure Vercel project env vars are visible to Laravel (no .env on serverless).
+    $configCache = $backendRoot.'/bootstrap/cache/config.php';
+    if (is_file($configCache)) {
+        unlink($configCache);
+    }
+
+    foreach ([
+        'APP_KEY', 'APP_ENV', 'APP_DEBUG', 'APP_URL',
+        'DB_CONNECTION', 'DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USERNAME', 'DB_PASSWORD',
+        'ADMIN_PIN', 'LOG_CHANNEL',
+    ] as $envKey) {
+        $value = getenv($envKey);
+        if ($value !== false && $value !== '') {
+            putenv("{$envKey}={$value}");
+            $_ENV[$envKey] = $value;
+            $_SERVER[$envKey] = $value;
+        }
+    }
 }
 
 /**
