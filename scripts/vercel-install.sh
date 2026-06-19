@@ -43,11 +43,13 @@ fi
 echo "==> Discovering Laravel packages"
 php artisan package:discover --ansi
 
-if [ -n "${APP_KEY:-}" ]; then
-  if [ -n "${DB_HOST:-}" ] || [ "${DB_CONNECTION:-}" = "sqlite" ]; then
-    echo "==> Running database migrations"
-    php artisan migrate --force --no-ansi
-  fi
+if [ -n "${APP_KEY:-}" ] \
+  && [ -n "${DB_HOST:-}" ] \
+  && [ -n "${DB_DATABASE:-}" ] \
+  && [ -n "${DB_USERNAME:-}" ] \
+  && [ -n "${DB_PASSWORD:-}" ]; then
+  echo "==> Running database migrations"
+  php artisan migrate --force --no-ansi || echo "WARN: migrations failed — check DB_* env vars"
 else
-  echo "==> APP_KEY not set — skipping Laravel migrations"
+  echo "==> DB not fully configured — skipping migrations (need DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD)"
 fi
