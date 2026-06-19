@@ -2,7 +2,7 @@
   "version": 2,
   "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "frontend/build/web",
-  "installCommand": "echo Skipping default install",
+  "installCommand": "bash scripts/vercel-install.sh",
   "framework": null,
   "functions": {
     "api/index.php": {
