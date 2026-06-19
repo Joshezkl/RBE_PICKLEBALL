@@ -12,18 +12,48 @@ const target = process.argv[2]
   ? path.resolve(process.argv[2])
   : path.join(__dirname, '..', 'frontend', 'web', 'env-config.js');
 
-function defaultApiBaseUrl() {
-  if (process.env.API_BASE_URL?.trim()) {
-    return process.env.API_BASE_URL.trim();
-  }
+function isStaleExternalApiUrl(url) {
+  if (!url) return true;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('railway.app') ||
+    lower.includes('your-real-api-host') ||
+    lower.includes('yourdomain.com') ||
+    lower.includes('localhost')
+  );
+}
 
+function defaultApiBaseUrl() {
+  const explicit = process.env.API_BASE_URL?.trim() || '';
   const host =
     process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
     process.env.VERCEL_URL?.trim() ||
     '';
 
+  if (explicit && !isStaleExternalApiUrl(explicit)) {
+    if (host) {
+      try {
+        const explicitHost = new URL(explicit).host;
+        const vercelHost = host.replace(/^https?:\/\//, '');
+        if (explicitHost !== vercelHost) {
+          console.warn(
+            `Ignoring external API_BASE_URL (${explicitHost}); using same-origin https://${vercelHost}/api`,
+          );
+        } else {
+          return explicit;
+        }
+      } catch (_) {
+        return explicit;
+      }
+    } else {
+      return explicit;
+    }
+  } else if (explicit && isStaleExternalApiUrl(explicit)) {
+    console.warn(`Ignoring stale API_BASE_URL (${explicit})`);
+  }
+
   if (host) {
-    return `https://${host}/api`;
+    return `https://${host.replace(/^https?:\/\//, '')}/api`;
   }
 
   return '';

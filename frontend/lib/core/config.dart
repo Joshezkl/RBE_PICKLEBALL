@@ -24,10 +24,12 @@ class AppConfig {
 
   /// API root URL. Normalizes a common local typo (`/api1` → `/api`).
   static final String apiBaseUrl = _normalizeApiBaseUrl(
-    _resolveValue(
-      runtimeKey: 'apiBaseUrl',
-      compileTime: _compileTimeApiBaseUrl,
-      devFallback: 'http://localhost:8000/api',
+    runtime_config.applyDeploymentApiBaseUrl(
+      _resolveValue(
+        runtimeKey: 'apiBaseUrl',
+        compileTime: _compileTimeApiBaseUrl,
+        devFallback: 'http://localhost:8000/api',
+      ),
     ),
   );
 
