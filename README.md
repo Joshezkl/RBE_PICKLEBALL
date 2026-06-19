@@ -15,8 +15,10 @@ Digital queue and court management for open-play pickleball sessions. Features d
 
 ```
 RBE/
-├── backend/     # Laravel API
+├── backend/     # Laravel API (deploy separately from Vercel)
 ├── frontend/    # Flutter web app (Admin + Board views)
+├── scripts/     # Vercel/CI build helpers
+├── vercel.json  # Vercel frontend deployment config
 └── README.md
 ```
 
@@ -169,8 +171,11 @@ Run Flutter with:
 flutter run -d chrome \
   --dart-define=API_BASE_URL=http://localhost:8000/api \
   --dart-define=WS_HOST=localhost:8080 \
+  --dart-define=WS_SCHEME=ws \
   --dart-define=WS_KEY=rpc-key
 ```
+
+Production (HTTPS) uses `wss` automatically when `API_BASE_URL` is `https://…`, or set `WS_SCHEME=wss` explicitly.
 
 ## VPS Deployment (DigitalOcean / Hostinger)
 
@@ -193,6 +198,109 @@ location /app {
     proxy_set_header Host $host;
 }
 ```
+
+## Vercel Deployment (Frontend)
+
+The Flutter web app deploys to **Vercel**. The Laravel API must run on a separate host (VPS, Railway, Render, Fly.io, etc.) with a managed MySQL database.
+
+### Architecture
+
+```
+Vercel (Flutter static)  ──HTTPS──►  API host (Laravel + MySQL)
+https://your-app.vercel.app          https://api.yourdomain.com/api
+```
+
+### 1. Deploy the API
+
+1. Host `backend/` on your API provider (see `backend/Procfile` for a minimal Railway/Render start command).
+2. Set production `.env` values:
+
+```
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://api.yourdomain.com
+DB_CONNECTION=mysql
+DB_HOST=...
+ADMIN_PIN=your-strong-pin
+FRONTEND_URL=https://your-app.vercel.app
+```
+
+3. Run migrations: `php artisan migrate --force`
+
+Verify: `GET https://api.yourdomain.com/api/health`
+
+### 2. Deploy the frontend to Vercel
+
+**Option A — Connect repo to Vercel (recommended)**
+
+1. Import this repository in [Vercel](https://vercel.com).
+2. Set **Root Directory** to the repo root (default).
+3. Vercel reads `vercel.json` and runs `scripts/vercel-build.sh` (installs Flutter if needed).
+4. Add **Environment Variables** in the Vercel project:
+
+| Variable | Example | Required |
+|----------|---------|----------|
+| `API_BASE_URL` | `https://api.yourdomain.com/api` | Yes |
+| `WS_HOST` | `api.yourdomain.com` | Only if using Reverb |
+| `WS_SCHEME` | `wss` | Only if using Reverb |
+| `WS_KEY` | `rpc-key` | Only if using Reverb |
+
+5. Deploy. Vercel provides a public URL like `https://your-app.vercel.app`.
+
+**Option B — GitHub Actions**
+
+Set repository **Variables** (`API_BASE_URL`, etc.) and **Secrets** (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`). Pushes to `main` run `.github/workflows/deploy-vercel.yml`.
+
+**Option C — Local build + Vercel CLI**
+
+```powershell
+# Windows
+$env:API_BASE_URL = "https://api.yourdomain.com/api"
+.\scripts\build-web.ps1
+```
+
+```bash
+# macOS/Linux
+export API_BASE_URL=https://api.yourdomain.com/api
+bash scripts/vercel-build.sh
+```
+
+### 3. Public URLs (share or QR code)
+
+| Audience | URL |
+|----------|-----|
+| Admin | `https://your-app.vercel.app/#/admin` |
+| Public board | `https://your-app.vercel.app/#/board` |
+| Check-in | Generated in admin (uses deployed origin automatically) |
+| Court display | `https://your-app.vercel.app/#/court?n=1` |
+| Tournament display | `https://your-app.vercel.app/#/tournament-display` |
+
+Hash routes work on static hosting without extra server config.
+
+### 4. Runtime configuration
+
+`frontend/web/env-config.js` is generated at build time from Vercel environment variables. It is loaded before Flutter starts, so you can change `API_BASE_URL` in Vercel and redeploy without editing source code.
+
+Priority: **runtime env-config.js** → **`--dart-define`** → local dev defaults.
+
+### 5. Production checklist
+
+- [ ] `API_BASE_URL` points to HTTPS API (not localhost)
+- [ ] `ADMIN_PIN` changed from default on the API
+- [ ] `APP_DEBUG=false` on the API
+- [ ] Managed MySQL (not SQLite)
+- [ ] `FRONTEND_URL` set on API for CORS (optional; omit to allow all origins)
+- [ ] Test admin login, board polling, check-in QR, tournament flow
+- [ ] Optional Reverb: `WS_SCHEME=wss`, proxy `/app` on API host
+
+### Local development (unchanged)
+
+```bash
+cd backend && php artisan serve
+cd frontend && flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000/api
+```
+
+Default admin PIN for local dev: **1234** (set `ADMIN_PIN` in `backend/.env`).
 
 ## Running Tests
 

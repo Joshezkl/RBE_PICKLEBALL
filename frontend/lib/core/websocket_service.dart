@@ -15,7 +15,7 @@ class LiveUpdateService {
     disconnect();
 
     final uri = Uri.parse(
-      'ws://${AppConfig.wsHost}/app/${AppConfig.wsKey}?protocol=7&client=js&version=8.4.0',
+      '${AppConfig.wsScheme}://${AppConfig.wsHost}/app/${AppConfig.wsKey}?protocol=7&client=js&version=8.4.0',
     );
 
     try {

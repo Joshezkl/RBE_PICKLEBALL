@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 /// Persists the admin PIN across page navigation so calendar and other
 /// admin routes always send the correct header.
 class AdminPinController extends ChangeNotifier {
-  AdminPinController({String initialPin = '1234'}) : _pin = initialPin;
+  AdminPinController({String initialPin = ''}) : _pin = initialPin;
 
   String _pin;
 

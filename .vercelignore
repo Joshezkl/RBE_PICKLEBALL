@@ -1,0 +1,7 @@
+backend/
+frontend/build/
+frontend/.dart_tool/
+.git/
+.github/
+*.md
+!README.md

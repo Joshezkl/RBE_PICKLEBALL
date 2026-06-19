@@ -40,7 +40,7 @@ class AdminPage extends StatefulWidget {
 
 class _AdminPageState extends State<AdminPage> {
   late final SessionController _controller;
-  final _pinController = TextEditingController(text: '1234');
+  final _pinController = TextEditingController();
   final _sessionNameController = TextEditingController();
   final _sessionFeeController = TextEditingController(text: '30');
 

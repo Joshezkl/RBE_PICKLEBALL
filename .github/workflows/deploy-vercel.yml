@@ -1,0 +1,50 @@
+name: Deploy Frontend to Vercel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'scripts/**'
+      - 'vercel.json'
+      - '.github/workflows/deploy-vercel.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      WS_HOST: ${{ vars.WS_HOST }}
+      WS_SCHEME: ${{ vars.WS_SCHEME }}
+      WS_KEY: ${{ vars.WS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate runtime config
+        run: node scripts/generate-env-config.mjs frontend/web/env-config.js
+
+      - name: Build Flutter web
+        run: |
+          cd frontend
+          flutter pub get
+          ARGS="build web --release"
+          [ -n "$API_BASE_URL" ] && ARGS="$ARGS --dart-define=API_BASE_URL=$API_BASE_URL"
+          [ -n "$WS_HOST" ] && ARGS="$ARGS --dart-define=WS_HOST=$WS_HOST"
+          [ -n "$WS_SCHEME" ] && ARGS="$ARGS --dart-define=WS_SCHEME=$WS_SCHEME"
+          [ -n "$WS_KEY" ] && ARGS="$ARGS --dart-define=WS_KEY=$WS_KEY"
+          flutter $ARGS
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./
+          vercel-args: '--prod'
