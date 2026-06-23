@@ -34,7 +34,7 @@ return new class extends Migration
         Schema::create('tournament_categories', function (Blueprint $table) {
             $table->id();
             $table->foreignId('tournament_id')->constrained()->cascadeOnDelete();
-            $table->string('category_key', 32);
+            $table->string('category_key', 96);
             $table->boolean('is_enabled')->default(false);
             $table->string('phase', 32)->default('setup');
             $table->timestamps();
