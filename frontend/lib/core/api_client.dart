@@ -960,6 +960,13 @@ class ApiClient {
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       if (body['message'] != null) message = body['message'] as String;
+      final detail = body['error'];
+      if (detail is String &&
+          detail.isNotEmpty &&
+          detail != message &&
+          !message.contains(detail)) {
+        message = '$message: $detail';
+      }
     } catch (_) {}
     throw ApiException(message, statusCode: response.statusCode);
   }

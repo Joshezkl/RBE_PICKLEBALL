@@ -53,6 +53,17 @@ $_SERVER['SCRIPT_NAME'] = '/index.php';
 $_SERVER['SCRIPT_FILENAME'] = $publicRoot.'/index.php';
 unset($_SERVER['PATH_INFO']);
 
+$autoload = $backendRoot.'/vendor/autoload.php';
+if (! is_file($autoload)) {
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'message' => 'API bootstrap failed',
+        'error' => 'Missing backend/vendor. Redeploy so the Vercel PHP build runs composer install (root composer.json "vercel" script).',
+    ], JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
 chdir($publicRoot);
 
 try {

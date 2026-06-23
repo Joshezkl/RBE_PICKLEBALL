@@ -9,5 +9,10 @@
   "config": {
     "optimize-autoloader": true,
     "sort-packages": true
+  },
+  "scripts": {
+    "vercel": [
+      "composer install --working-dir=backend --no-dev --optimize-autoloader --no-interaction --no-scripts"
+    ]
   }
 }
