@@ -54,4 +54,14 @@ class SessionHistoryTest extends TestCase
 
         $this->assertEquals('Morning Play', $detail['session']['name']);
     }
+
+    public function test_calendar_markers_empty_month_encodes_as_object(): void
+    {
+        $response = $this->withHeader('X-Admin-Pin', self::PIN)
+            ->getJson('/api/sessions/calendar?year=2099&month=1')
+            ->assertOk();
+
+        $response->assertJsonStructure(['year', 'month', 'markers']);
+        $this->assertStringContainsString('"markers":{}', $response->getContent());
+    }
 }

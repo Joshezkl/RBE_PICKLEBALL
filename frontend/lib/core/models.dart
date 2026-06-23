@@ -543,8 +543,10 @@ class SessionReport {
   final List<Map<String, dynamic>> matchSummaries;
 
   factory SessionReport.fromJson(Map<String, dynamic> json) {
-    final distribution =
-        json['queueDistribution'] as Map<String, dynamic>? ?? {};
+    final distribution = json['queueDistribution'];
+    final distributionMap = distribution is Map
+        ? Map<String, dynamic>.from(distribution)
+        : <String, dynamic>{};
     return SessionReport(
       sessionId: json['sessionId'] as int,
       sessionName: json['sessionName'] as String,
@@ -552,8 +554,8 @@ class SessionReport {
       durationMinutes: (json['durationMinutes'] as num?)?.round() ?? 0,
       courtUtilizationPercent:
           (json['courtUtilizationPercent'] as num?)?.toDouble() ?? 0,
-      winnersQueueSize: distribution['winnersQueueSize'] as int? ?? 0,
-      losersQueueSize: distribution['losersQueueSize'] as int? ?? 0,
+      winnersQueueSize: distributionMap['winnersQueueSize'] as int? ?? 0,
+      losersQueueSize: distributionMap['losersQueueSize'] as int? ?? 0,
       playerSummaries: (json['playerSummaries'] as List<dynamic>? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList(),

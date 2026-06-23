@@ -426,8 +426,17 @@ class ApiClient {
     );
     _throwOnError(response);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final markers = body['markers'] as Map<String, dynamic>? ?? {};
-    return markers.map((key, value) => MapEntry(key, (value as num).toInt()));
+    return _parseIntMap(body['markers']);
+  }
+
+  Map<String, int> _parseIntMap(dynamic raw) {
+    if (raw is! Map) return {};
+    return raw.map(
+      (key, value) => MapEntry(
+        key.toString(),
+        value is num ? value.toInt() : int.tryParse('$value') ?? 0,
+      ),
+    );
   }
 
   Future<List<SessionHistorySummary>> getSessionsOnDate(String date) async {

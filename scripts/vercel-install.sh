@@ -53,10 +53,11 @@ if [ -n "${APP_KEY:-}" ] \
   && [ -n "${DB_USERNAME:-}" ] \
   && [ -n "${DB_PASSWORD:-}" ]; then
   echo "==> Running database migrations (host=${DB_HOST}, database=${DB_DATABASE})"
-  php artisan migrate --force --no-ansi || {
-    echo "WARN: migrations failed — check DB_* env vars and TiDB IP allowlist (0.0.0.0/0)"
-    php artisan migrate --force --no-ansi 2>&1 | tail -5 || true
-  }
+  if ! php artisan migrate --force --no-ansi; then
+    echo "ERROR: migrations failed — tables may be out of date. Fix DB_* env vars, TiDB allowlist (0.0.0.0/0), then redeploy." >&2
+    php artisan migrate --force --no-ansi 2>&1 | tail -10 >&2 || true
+    exit 1
+  fi
 else
   echo "==> DB not fully configured — skipping migrations (need DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD)"
 fi

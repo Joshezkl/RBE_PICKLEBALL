@@ -106,7 +106,8 @@ class SessionController extends Controller
         return response()->json([
             'year' => $validated['year'],
             'month' => $validated['month'],
-            'markers' => $this->sessionHistoryService->calendarMarkers(
+            // Empty PHP arrays JSON-encode as [] — Flutter expects a map.
+            'markers' => (object) $this->sessionHistoryService->calendarMarkers(
                 $validated['year'],
                 $validated['month'],
             ),
