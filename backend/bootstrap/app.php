@@ -28,9 +28,22 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
+            $detail = $exception->getMessage();
+            $hint = 'Add MySQL variables (DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD) in Vercel project settings, enable them for Preview and Production, then redeploy.';
+
+            if (str_contains($detail, 'Access denied')) {
+                $hint = 'Database credentials were rejected. Check DB_USERNAME and DB_PASSWORD in Vercel env vars.';
+            } elseif (str_contains($detail, 'Unknown database')) {
+                $hint = 'Database does not exist yet. Create it in your MySQL provider (e.g. rpc_queue), then redeploy so migrations can run.';
+            } elseif (str_contains($detail, "doesn't exist") || str_contains($detail, 'no such table')) {
+                $hint = 'Database is reachable but tables are missing. Redeploy with DB_* vars set so migrations run during the Vercel build.';
+            } elseif (str_contains($detail, 'Connection refused') || str_contains($detail, 'timed out')) {
+                $hint = 'Cannot reach the database host. Check DB_HOST, DB_PORT, and allow external connections from your MySQL provider.';
+            }
+
             return response()->json([
-                'message' => 'Database not connected. Add MySQL variables (DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD) in Vercel project settings, then redeploy.',
-                'error' => 'database_not_configured',
+                'message' => 'Database not connected. '.$hint,
+                'error' => $detail,
             ], 503);
         });
     })->create();
