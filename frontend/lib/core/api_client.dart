@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'config.dart';
+import 'admin_pin_controller.dart';
 import 'models.dart';
 import 'tournament_models.dart';
 
@@ -26,11 +27,16 @@ class ApiClient {
 
   void setAdminPin(String? pin) => _adminPin = pin;
 
+  String get _resolvedAdminPin {
+    final global = rpcAdminPinController.pin;
+    if (global.isNotEmpty) return global;
+    return _adminPin?.trim() ?? '';
+  }
+
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        if (_adminPin != null && _adminPin!.isNotEmpty)
-          'X-Admin-Pin': _adminPin!,
+        if (_resolvedAdminPin.isNotEmpty) 'X-Admin-Pin': _resolvedAdminPin,
       };
 
   Future<SessionState> getActiveSession() async {
@@ -631,8 +637,7 @@ class ApiClient {
     final response = await _client.get(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/export'),
       headers: {
-        if (_adminPin != null && _adminPin!.isNotEmpty)
-          'X-Admin-Pin': _adminPin!,
+        if (_resolvedAdminPin.isNotEmpty) 'X-Admin-Pin': _resolvedAdminPin,
       },
     );
     _throwOnError(response);

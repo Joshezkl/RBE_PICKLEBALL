@@ -10,6 +10,7 @@ import '../admin_pin_controller.dart';
 import 'brand_logo.dart';
 import 'rpc_responsive.dart';
 import 'theme_toggle_button.dart';
+import 'admin_pin_lock_button.dart';
 
 enum RpcNavDestination {
   dashboard,
@@ -259,6 +260,7 @@ class _TopNavBar extends StatelessWidget {
                     const Spacer(),
                   ],
                   ...actions,
+                  const AdminPinLockButton(),
                   if (themeController != null) ...[
                     const SizedBox(width: RpcSpacing.sm),
                     Material(

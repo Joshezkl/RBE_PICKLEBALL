@@ -40,7 +40,7 @@ class AdminPage extends StatefulWidget {
 
 class _AdminPageState extends State<AdminPage> {
   late final SessionController _controller;
-  final _pinController = TextEditingController();
+  late final TextEditingController _pinController;
   final _sessionNameController = TextEditingController();
   final _sessionFeeController = TextEditingController(text: '30');
 
@@ -62,12 +62,21 @@ class _AdminPageState extends State<AdminPage> {
     super.initState();
     _autoSessionName = MatchModes.sessionNameFor(_selectedMatchMode);
     _sessionNameController.text = _autoSessionName;
+    _pinController = TextEditingController(text: rpcAdminPinController.pin);
     _controller = SessionController();
-    rpcAdminPinController.setPin(_pinController.text);
-    _controller.setAdminPin(_pinController.text);
+    _controller.setAdminPin(rpcAdminPinController.pin);
+    rpcAdminPinController.addListener(_onAdminPinChanged);
     _controller.initialize();
     _controller.addListener(_onControllerUpdate);
     _loadPresets();
+  }
+
+  void _onAdminPinChanged() {
+    final saved = rpcAdminPinController.pin;
+    if (_pinController.text == saved) return;
+    _pinController.text = saved;
+    _controller.setAdminPin(saved);
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadPresets() async {
@@ -106,6 +115,7 @@ class _AdminPageState extends State<AdminPage> {
 
   @override
   void dispose() {
+    rpcAdminPinController.removeListener(_onAdminPinChanged);
     _controller.removeListener(_onControllerUpdate);
     _controller.dispose();
     _pinController.dispose();
