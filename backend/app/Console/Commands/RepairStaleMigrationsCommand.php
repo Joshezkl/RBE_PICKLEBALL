@@ -60,6 +60,10 @@ class RepairStaleMigrationsCommand extends Command
             return true;
         }
 
+        if (str_contains($content, '->change()')) {
+            return false;
+        }
+
         if (preg_match("/Schema::table\(\s*'([^']+)'/", $content, $tableMatch)) {
             $table = $tableMatch[1];
             if (! Schema::hasTable($table)) {

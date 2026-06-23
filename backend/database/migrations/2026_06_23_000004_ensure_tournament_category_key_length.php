@@ -6,27 +6,11 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Safety net for deployments where the previous alter migration was
+     * marked as run without actually widening category_key.
+     */
     public function up(): void
-    {
-        $this->expandCategoryKeyColumn();
-    }
-
-    public function down(): void
-    {
-        if (! Schema::hasTable('tournament_categories')) {
-            return;
-        }
-
-        if (Schema::getConnection()->getDriverName() === 'sqlite') {
-            return;
-        }
-
-        DB::statement(
-            'ALTER TABLE tournament_categories MODIFY category_key VARCHAR(32) NOT NULL'
-        );
-    }
-
-    private function expandCategoryKeyColumn(): void
     {
         if (! Schema::hasTable('tournament_categories')) {
             return;
@@ -57,5 +41,10 @@ return new class extends Migration
         DB::statement(
             'ALTER TABLE tournament_categories MODIFY category_key VARCHAR(96) NOT NULL'
         );
+    }
+
+    public function down(): void
+    {
+        // No-op: handled by 2026_06_23_000003 down().
     }
 };
