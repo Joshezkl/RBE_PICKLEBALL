@@ -9,6 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('session_partner_pairs')) {
+            return;
+        }
+
         Schema::create('session_partner_pairs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('play_session_id')->constrained('play_sessions')->cascadeOnDelete();

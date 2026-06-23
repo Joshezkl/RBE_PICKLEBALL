@@ -8,8 +8,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('challenge_court_teams', 'court_id')) {
+            return;
+        }
+
         Schema::table('challenge_court_teams', function (Blueprint $table) {
-            $table->unsignedTinyInteger('cc_wins')->default(0)->after('status');
+            if (! Schema::hasColumn('challenge_court_teams', 'cc_wins')) {
+                $table->unsignedTinyInteger('cc_wins')->default(0)->after('status');
+            }
             $table->foreignId('court_id')
                 ->nullable()
                 ->after('cc_wins')
