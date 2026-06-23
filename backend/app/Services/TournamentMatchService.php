@@ -11,7 +11,6 @@ class TournamentMatchService
 {
     public function __construct(
         private TournamentScheduleService $scheduleService,
-        private TournamentCourtService $courtService,
     ) {}
 
     public function score(Tournament $tournament, TournamentMatch $match, int $scoreA, int $scoreB): void
@@ -38,13 +37,6 @@ class TournamentMatchService
 
         $winnerTeamId = $scoreA > $scoreB ? $match->team_a_id : $match->team_b_id;
         $loserTeamId = $scoreA > $scoreB ? $match->team_b_id : $match->team_a_id;
-        $freedGroupKey = $match->group_key;
-        $freedCourtNumber = $match->court_number;
-        $justFinishedTeamIds = array_values(array_filter([
-            $match->team_a_id,
-            $match->team_b_id,
-        ]));
-
         DB::transaction(function () use ($match, $scoreA, $scoreB, $winnerTeamId, $loserTeamId) {
             $match->update([
                 'score_a' => $scoreA,
@@ -98,12 +90,6 @@ class TournamentMatchService
         }
 
         $this->syncTournamentStatus($tournament->fresh());
-        $this->courtService->syncAssignments(
-            $tournament->fresh(),
-            $freedGroupKey,
-            $freedCourtNumber,
-            $justFinishedTeamIds,
-        );
     }
 
     private function advanceWinnerToNextMatch(TournamentMatch $match, int $winnerTeamId): void

@@ -290,4 +290,26 @@ class TournamentController extends Controller
 
         return response()->json($this->stateService->build($tournament->fresh()));
     }
+
+    public function replaceCourt(
+        Request $request,
+        Tournament $tournament,
+        TournamentMatch $tournamentMatch,
+    ): JsonResponse {
+        $validated = $request->validate([
+            'court_number' => 'required|integer|min:1|max:12',
+        ]);
+
+        try {
+            $this->courtService->replaceCourtMatch(
+                $tournament,
+                (int) $validated['court_number'],
+                $tournamentMatch,
+            );
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($this->stateService->build($tournament->fresh()));
+    }
 }

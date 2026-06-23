@@ -74,6 +74,9 @@ class TournamentUpNextChip extends StatelessWidget {
     final prefix = match.isReady
         ? (index == 0 ? 'Next' : 'On deck')
         : 'Waiting';
+    final courtPrefix = match.recommendedCourtNumber != null
+        ? 'Court ${match.recommendedCourtNumber} · '
+        : '';
     final group = match.groupLabel != null ? '${match.groupLabel} · ' : '';
 
     return Container(
@@ -89,7 +92,7 @@ class TournamentUpNextChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '$prefix · $group${match.teamA ?? 'TBD'} vs ${match.teamB ?? 'TBD'}',
+            '$prefix · $courtPrefix$group${match.teamA ?? 'TBD'} vs ${match.teamB ?? 'TBD'}',
             style: RpcTypography.caption(context).copyWith(
               fontWeight: index == 0 && match.isReady
                   ? FontWeight.w600

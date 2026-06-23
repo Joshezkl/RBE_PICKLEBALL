@@ -117,10 +117,11 @@ class TournamentFlowView extends StatelessWidget {
 
     return TournamentBracketPanel(
       child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             if (regularGroups.isNotEmpty) ...[
               TournamentGroupColumnsView(
                 groups: regularGroups,
@@ -151,7 +152,8 @@ class TournamentFlowView extends StatelessWidget {
                 match: thirdPlaceMatch!,
                 onScoreMatch: onScoreMatch,
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -580,13 +582,25 @@ class TournamentBracketView extends StatelessWidget {
     if (rounds.isEmpty) return const SizedBox.shrink();
 
     final firstRound = rounds.first;
-    final matchCount = firstRound.matches.length;
+    final firstRoundMatches = firstRound.matches;
+    final matchCount = firstRoundMatches.length;
     final columnCount = rounds.length + 1;
-    final bracketHeight = TournamentBracketMetrics.bracketHeight(matchCount);
+    final finalRound = rounds.last;
+    final finalMatch = finalRound.matches.isNotEmpty ? finalRound.matches.first : null;
+    final showRunnerUpLane = finalMatch != null &&
+        finalRound.matches.length == 1 &&
+        _runnerUpName(finalMatch) != null;
+    var bracketHeight =
+        TournamentBracketMetrics.bracketHeight(firstRoundMatches);
+    if (showRunnerUpLane) {
+      bracketHeight += TournamentBracketMetrics.runnerUpLaneHeight;
+    }
     final totalWidth = TournamentBracketMetrics.totalWidth(columnCount);
     final showThirdPlace =
         thirdPlaceMatch != null && matchCount >= 2;
-    final thirdLaneHeight = showThirdPlace ? 100.0 : 0.0;
+    final thirdLaneHeight = showThirdPlace
+        ? TournamentBracketMetrics.thirdPlaceLaneHeight(thirdPlaceMatch!)
+        : 0.0;
     final thirdGap = showThirdPlace ? RpcSpacing.md : 0.0;
     final combinedHeight = bracketHeight + thirdGap + thirdLaneHeight;
 
@@ -600,10 +614,11 @@ class TournamentBracketView extends StatelessWidget {
             Positioned.fill(
               child: CustomPaint(
                 painter: _ThirdPlaceConnectorPainter(
-                  semiMatchCount: matchCount,
+                  firstRoundMatches: firstRoundMatches,
                   bracketHeight: bracketHeight,
                   gapHeight: thirdGap,
                   laneHeight: thirdLaneHeight,
+                  showRunnerUpLane: showRunnerUpLane,
                   color: style.connectorColor,
                 ),
               ),
@@ -620,7 +635,9 @@ class TournamentBracketView extends StatelessWidget {
                   size: Size(totalWidth, bracketHeight),
                   painter: _BracketTreePainter(
                     rounds: rounds,
+                    firstRoundMatches: firstRoundMatches,
                     bracketHeight: bracketHeight,
+                    showRunnerUpLane: showRunnerUpLane,
                     color: style.connectorColor,
                   ),
                 ),
@@ -630,8 +647,10 @@ class TournamentBracketView extends StatelessWidget {
                     style: style,
                     column: column,
                     rounds: rounds,
+                    firstRoundMatches: firstRoundMatches,
                     matchCount: matchCount,
                     bracketHeight: bracketHeight,
+                    showRunnerUpLane: showRunnerUpLane,
                   ),
               ],
             ),
@@ -669,24 +688,31 @@ class TournamentBracketView extends StatelessWidget {
     required TournamentFlowStyle style,
     required int column,
     required List<TournamentBracketRound> rounds,
+    required List<TournamentMatchInfo> firstRoundMatches,
     required int matchCount,
     required double bracketHeight,
+    required bool showRunnerUpLane,
   }) {
     final left = 16.0 + column * (TournamentBracketMetrics.pillWidth +
         TournamentBracketMetrics.columnGap);
 
     if (column == 0) {
       return List.generate(matchCount, (matchIndex) {
-        final match = rounds.first.matches[matchIndex];
-        final groupTop = _matchGroupTop(matchIndex, matchCount, bracketHeight);
-        final pairHeight = (TournamentBracketMetrics.pillHeight * 2) +
-            TournamentBracketMetrics.slotGap;
+        final match = firstRoundMatches[matchIndex];
+        final groupTop = TournamentBracketMetrics.matchGroupTop(
+          matchIndex,
+          firstRoundMatches,
+          bracketHeight - (showRunnerUpLane
+              ? TournamentBracketMetrics.runnerUpLaneHeight
+              : 0),
+        );
+        final stackHeight = TournamentBracketMetrics.matchPairStackHeight(match);
 
         return Positioned(
           left: left,
           top: groupTop,
           width: TournamentBracketMetrics.pillWidth,
-          height: pairHeight,
+          height: stackHeight,
           child: _MatchPairStack(
             match: match,
             style: style,
@@ -706,7 +732,9 @@ class TournamentBracketView extends StatelessWidget {
       final score = match.isFinished
           ? (match.winnerTeamId == match.teamA?.id ? match.scoreA : match.scoreB)
           : null;
-      final pillTop = _slotTop(index, slotCount, bracketHeight) -
+      final mainBracketHeight = bracketHeight -
+          (showRunnerUpLane ? TournamentBracketMetrics.runnerUpLaneHeight : 0);
+      final pillTop = _slotTop(index, slotCount, mainBracketHeight) -
           (TournamentBracketMetrics.pillHeight / 2);
       final widgets = <Widget>[
         Positioned(
@@ -795,20 +823,6 @@ class TournamentBracketView extends StatelessWidget {
   static double _slotTop(int index, int slotCount, double height) {
     return height * (2 * index + 1) / (2 * slotCount);
   }
-
-  static double _matchGroupTop(
-    int matchIndex,
-    int matchCount,
-    double height,
-  ) {
-    final groupHeight = (TournamentBracketMetrics.pillHeight * 2) +
-        TournamentBracketMetrics.slotGap;
-    final totalGroupsHeight =
-        (groupHeight * matchCount) +
-        (TournamentBracketMetrics.slotGap * (matchCount - 1));
-    final topOffset = (height - totalGroupsHeight) / 2;
-    return topOffset + (matchIndex * (groupHeight + TournamentBracketMetrics.slotGap));
-  }
 }
 
 class _ThirdPlaceOnlyBracketView extends StatelessWidget {
@@ -824,9 +838,11 @@ class _ThirdPlaceOnlyBracketView extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = TournamentFlowStyle(context);
     final width = TournamentBracketMetrics.pillWidth + 32;
+    final height = TournamentBracketMetrics.thirdPlaceLaneHeight(match);
 
     return SizedBox(
       width: width,
+      height: height,
       child: _ThirdPlaceBracketLane(
         match: match,
         style: style,
@@ -904,54 +920,63 @@ class _ThirdPlaceBracketLane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pairHeight = (TournamentBracketMetrics.pillHeight * 2) +
-        TournamentBracketMetrics.slotGap;
+    final stackHeight = TournamentBracketMetrics.matchPairStackHeight(match);
     const left = 16.0;
+    final laneHeight = TournamentBracketMetrics.thirdPlaceLaneHeight(match);
 
-    return Stack(
-      children: [
-        Positioned(
-          left: 0,
-          top: 0,
-          child: _PlacementBracketLabel(
-            tier: _PlacementLabelTier.third,
-            style: style,
+    return SizedBox(
+      height: laneHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            child: _PlacementBracketLabel(
+              tier: _PlacementLabelTier.third,
+              style: style,
+            ),
           ),
-        ),
-        Positioned(
-          left: left,
-          top: 24,
-          width: TournamentBracketMetrics.pillWidth,
-          height: pairHeight,
-          child: _MatchPairStack(
-            match: match,
-            style: style,
-            onScore: match.canScore ? () => onScoreMatch(match) : null,
+          Positioned(
+            left: left,
+            top: TournamentBracketMetrics.placementLabelHeight + 8,
+            width: TournamentBracketMetrics.pillWidth,
+            height: stackHeight,
+            child: _MatchPairStack(
+              match: match,
+              style: style,
+              onScore: match.canScore ? () => onScoreMatch(match) : null,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 class _ThirdPlaceConnectorPainter extends CustomPainter {
   _ThirdPlaceConnectorPainter({
-    required this.semiMatchCount,
+    required this.firstRoundMatches,
     required this.bracketHeight,
     required this.gapHeight,
     required this.laneHeight,
+    required this.showRunnerUpLane,
     required this.color,
   });
 
-  final int semiMatchCount;
+  final List<TournamentMatchInfo> firstRoundMatches;
   final double bracketHeight;
   final double gapHeight;
   final double laneHeight;
+  final bool showRunnerUpLane;
   final Color color;
+
+  double get _mainBracketHeight => bracketHeight -
+      (showRunnerUpLane ? TournamentBracketMetrics.runnerUpLaneHeight : 0);
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (semiMatchCount < 2) return;
+    if (firstRoundMatches.length < 2) return;
 
     final paint = Paint()
       ..color = color
@@ -960,21 +985,23 @@ class _ThirdPlaceConnectorPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     final pillWidth = TournamentBracketMetrics.pillWidth;
-    final pillHeight = TournamentBracketMetrics.pillHeight;
-    final slotGap = TournamentBracketMetrics.slotGap;
     final sourceLeft = 16.0 + pillWidth;
     final pairCenterX = 16.0 + (pillWidth / 2);
-    final pairTop = bracketHeight + gapHeight + 24;
-    final mergeY = bracketHeight + (gapHeight / 2);
+    final pairTop = bracketHeight +
+        gapHeight +
+        TournamentBracketMetrics.placementLabelHeight +
+        8;
+    final mergeY = _mainBracketHeight + (gapHeight / 2);
 
-    for (var index = 0; index < semiMatchCount; index++) {
-      final groupTop = TournamentBracketView._matchGroupTop(
+    for (var index = 0; index < firstRoundMatches.length; index++) {
+      final groupTop = TournamentBracketMetrics.matchGroupTop(
         index,
-        semiMatchCount,
-        bracketHeight,
+        firstRoundMatches,
+        _mainBracketHeight,
       );
-      final groupHeight = (pillHeight * 2) + slotGap;
-      final pairCenterY = groupTop + (groupHeight / 2);
+      final stackHeight =
+          TournamentBracketMetrics.matchPairStackHeight(firstRoundMatches[index]);
+      final pairCenterY = groupTop + (stackHeight / 2);
 
       canvas.drawLine(
         Offset(sourceLeft, pairCenterY),
@@ -998,8 +1025,9 @@ class _ThirdPlaceConnectorPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ThirdPlaceConnectorPainter oldDelegate) {
     return oldDelegate.color != color ||
-        oldDelegate.semiMatchCount != semiMatchCount ||
-        oldDelegate.bracketHeight != bracketHeight;
+        oldDelegate.firstRoundMatches != firstRoundMatches ||
+        oldDelegate.bracketHeight != bracketHeight ||
+        oldDelegate.showRunnerUpLane != showRunnerUpLane;
   }
 }
 
@@ -1008,12 +1036,61 @@ class TournamentBracketMetrics {
   static const pillHeight = 34.0;
   static const slotGap = 8.0;
   static const columnGap = 48.0;
+  static const courtBannerHeight = 34.0;
+  static const placementLabelHeight = 22.0;
+  static const runnerUpLaneHeight = 62.0;
 
-  static double bracketHeight(int firstRoundMatchCount) {
-    final groupHeight = (pillHeight * 2) + slotGap;
-    return (groupHeight * firstRoundMatchCount) +
-        (slotGap * (firstRoundMatchCount - 1)) +
-        24;
+  static double matchPairStackHeight(TournamentMatchInfo match) {
+    final pairHeight = (pillHeight * 2) + slotGap;
+    final hasCourtBanner = (match.isAssignedToCourt || match.isOnCourt) &&
+        match.courtNumber != null;
+    return pairHeight + (hasCourtBanner ? courtBannerHeight : 0);
+  }
+
+  static double bracketHeight(List<TournamentMatchInfo> firstRoundMatches) {
+    if (firstRoundMatches.isEmpty) {
+      return (pillHeight * 2) + slotGap + 24;
+    }
+
+    var total = 0.0;
+    for (var index = 0; index < firstRoundMatches.length; index++) {
+      total += matchPairStackHeight(firstRoundMatches[index]);
+      if (index < firstRoundMatches.length - 1) {
+        total += slotGap;
+      }
+    }
+
+    return total + 24;
+  }
+
+  static double matchGroupTop(
+    int matchIndex,
+    List<TournamentMatchInfo> firstRoundMatches,
+    double height,
+  ) {
+    if (firstRoundMatches.isEmpty) return 0;
+
+    var offset = 0.0;
+    for (var index = 0; index < matchIndex; index++) {
+      offset += matchPairStackHeight(firstRoundMatches[index]) + slotGap;
+    }
+
+    var totalGroupsHeight = 0.0;
+    for (var index = 0; index < firstRoundMatches.length; index++) {
+      totalGroupsHeight += matchPairStackHeight(firstRoundMatches[index]);
+      if (index < firstRoundMatches.length - 1) {
+        totalGroupsHeight += slotGap;
+      }
+    }
+
+    final topOffset = (height - totalGroupsHeight) / 2;
+    return topOffset + offset;
+  }
+
+  static double thirdPlaceLaneHeight(TournamentMatchInfo match) {
+    return placementLabelHeight +
+        8 +
+        matchPairStackHeight(match);
   }
 
   static double totalWidth(int columnCount) {
@@ -1175,13 +1252,20 @@ class _FlowStageDivider extends StatelessWidget {
 class _BracketTreePainter extends CustomPainter {
   _BracketTreePainter({
     required this.rounds,
+    required this.firstRoundMatches,
     required this.bracketHeight,
+    required this.showRunnerUpLane,
     required this.color,
   });
 
   final List<TournamentBracketRound> rounds;
+  final List<TournamentMatchInfo> firstRoundMatches;
   final double bracketHeight;
+  final bool showRunnerUpLane;
   final Color color;
+
+  double get _mainBracketHeight => bracketHeight -
+      (showRunnerUpLane ? TournamentBracketMetrics.runnerUpLaneHeight : 0);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1191,14 +1275,10 @@ class _BracketTreePainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final firstRound = rounds.first;
-    final matchCount = firstRound.matches.length;
     final columnCount = rounds.length + 1;
     final pillWidth = TournamentBracketMetrics.pillWidth;
     final columnGap = TournamentBracketMetrics.columnGap;
     final pillHeight = TournamentBracketMetrics.pillHeight;
-    final slotGap = TournamentBracketMetrics.slotGap;
-    final groupHeight = (pillHeight * 2) + slotGap;
 
     for (var column = 0; column < columnCount - 1; column++) {
       final destCount = rounds[column].matches.length;
@@ -1212,12 +1292,15 @@ class _BracketTreePainter extends CustomPainter {
         final yDest = _centerY(dest, destCount);
 
         if (column == 0) {
-          final totalGroupsHeight =
-              (groupHeight * matchCount) + (slotGap * (matchCount - 1));
-          final topOffset = (bracketHeight - totalGroupsHeight) / 2;
-          final groupTop = topOffset + (dest * (groupHeight + slotGap));
+          final groupTop = TournamentBracketMetrics.matchGroupTop(
+            dest,
+            firstRoundMatches,
+            _mainBracketHeight,
+          );
+          final stackHeight =
+              TournamentBracketMetrics.matchPairStackHeight(firstRoundMatches[dest]);
           yA = groupTop + (pillHeight / 2);
-          yB = groupTop + pillHeight + slotGap + (pillHeight / 2);
+          yB = groupTop + stackHeight - (pillHeight / 2);
         } else {
           final sourceCount = rounds[column - 1].matches.length;
           final sourceA = dest * 2;
@@ -1235,11 +1318,14 @@ class _BracketTreePainter extends CustomPainter {
   }
 
   double _centerY(int index, int count) {
-    return bracketHeight * (2 * index + 1) / (2 * count);
+    return _mainBracketHeight * (2 * index + 1) / (2 * count);
   }
 
   @override
   bool shouldRepaint(covariant _BracketTreePainter oldDelegate) {
-    return oldDelegate.rounds != rounds || oldDelegate.color != color;
+    return oldDelegate.rounds != rounds ||
+        oldDelegate.firstRoundMatches != firstRoundMatches ||
+        oldDelegate.showRunnerUpLane != showRunnerUpLane ||
+        oldDelegate.color != color;
   }
 }

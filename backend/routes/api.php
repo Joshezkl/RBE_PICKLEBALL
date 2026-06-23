@@ -125,4 +125,5 @@ Route::middleware(VerifyAdminPin::class)->group(function () {
     Route::post('/tournaments/{tournament}/matches/{tournamentMatch}/score', [TournamentController::class, 'score']);
     Route::post('/tournaments/{tournament}/matches/{tournamentMatch}/activate-court', [TournamentController::class, 'activateCourt']);
     Route::post('/tournaments/{tournament}/matches/{tournamentMatch}/assign-court', [TournamentController::class, 'assignCourt']);
+    Route::post('/tournaments/{tournament}/matches/{tournamentMatch}/replace-court', [TournamentController::class, 'replaceCourt']);
 });

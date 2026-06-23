@@ -91,9 +91,6 @@ class TournamentService
 
             $tournament->update(['court_count' => $courtCount]);
 
-            if ($isLive) {
-                $this->courtService->syncAssignments($tournament->fresh());
-            }
         });
     }
 
@@ -134,8 +131,6 @@ class TournamentService
                 'started_at' => now(),
             ]);
         });
-
-        $this->courtService->syncAssignments($tournament->fresh());
 
         return $tournament->fresh();
     }
@@ -260,10 +255,6 @@ class TournamentService
             return $team->fresh(['members.clubPlayer']);
         });
 
-        if ($isLiveRoundRobin) {
-            $this->courtService->syncAssignments($tournament->fresh());
-        }
-
         return $team;
     }
 
@@ -329,7 +320,6 @@ class TournamentService
         if ($isLiveRoundRobin) {
             $this->scheduleService->withdrawRoundRobinTeam($category, $team);
             $team->delete();
-            $this->courtService->syncAssignments($tournament->fresh());
         } else {
             $team->delete();
         }

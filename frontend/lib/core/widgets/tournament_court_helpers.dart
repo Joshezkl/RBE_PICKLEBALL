@@ -56,3 +56,52 @@ int tournamentSlotsPerTeamForCategoryKey(String? categoryKey) {
   if (categoryKey == null) return 2;
   return categoryKey.contains('singles') ? 1 : 2;
 }
+
+List<TournamentUpNextMatchInfo> tournamentCandidatesForCourt(
+  List<TournamentUpNextMatchInfo> upNext,
+  String? preferredGroupKey, {
+  int? excludeMatchId,
+}) {
+  var candidates = upNext;
+  if (excludeMatchId != null) {
+    candidates = candidates.where((match) => match.id != excludeMatchId).toList();
+  }
+
+  if (preferredGroupKey == null) {
+    return candidates;
+  }
+
+  final preferred =
+      candidates.where((match) => match.groupKey == preferredGroupKey).toList();
+
+  return preferred.isNotEmpty ? preferred : candidates;
+}
+
+List<TournamentUpNextMatchInfo> tournamentUpNextSortedByCourt(
+  List<TournamentUpNextMatchInfo> upNext,
+) {
+  final sorted = List<TournamentUpNextMatchInfo>.from(upNext);
+  sorted.sort((left, right) {
+    final leftCourt = left.recommendedCourtNumber;
+    final rightCourt = right.recommendedCourtNumber;
+
+    if (leftCourt != null && rightCourt != null) {
+      final courtCompare = leftCourt.compareTo(rightCourt);
+      if (courtCompare != 0) {
+        return courtCompare;
+      }
+    } else if (leftCourt != null) {
+      return -1;
+    } else if (rightCourt != null) {
+      return 1;
+    }
+
+    if (left.isReady != right.isReady) {
+      return left.isReady ? -1 : 1;
+    }
+
+    return left.id.compareTo(right.id);
+  });
+
+  return sorted;
+}

@@ -936,6 +936,24 @@ class ApiClient {
     );
   }
 
+  Future<TournamentState> replaceTournamentCourtMatch(
+    int tournamentId,
+    int matchId, {
+    required int courtNumber,
+  }) async {
+    final response = await _client.post(
+      Uri.parse(
+        '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/matches/$matchId/replace-court',
+      ),
+      headers: _headers,
+      body: jsonEncode({'court_number': courtNumber}),
+    );
+    _throwOnError(response);
+    return TournamentState.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   void _throwOnError(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) return;
     String message = 'Request failed (${response.statusCode})';

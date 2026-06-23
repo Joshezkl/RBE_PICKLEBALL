@@ -494,7 +494,8 @@ class TournamentTest extends TestCase
         );
         $this->assertNotNull($reopened['categories'][0]['thirdPlaceMatch']);
         $thirdPlace = $reopened['categories'][0]['thirdPlaceMatch'];
-        $this->assertEquals('on_court', $thirdPlace['status']);
+        $this->assertEquals('scheduled', $thirdPlace['status']);
+        $this->assertNull($thirdPlace['courtNumber']);
         $this->assertNotNull($thirdPlace['teamA']);
         $this->assertNotNull($thirdPlace['teamB']);
     }
@@ -625,6 +626,45 @@ class TournamentTest extends TestCase
         ]);
     }
 
+    private function assignMatchToCourt(
+        int $tournamentId,
+        int $matchId,
+        int $courtNumber,
+    ): void {
+        $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson("/api/tournaments/{$tournamentId}/matches/{$matchId}/assign-court", [
+                'court_number' => $courtNumber,
+            ])
+            ->assertOk();
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     */
+    private function assignPreferredMatchesToCourts(int $tournamentId, array $state): void
+    {
+        $upNext = collect($state['display']['upNext']);
+        $assignedMatchIds = [];
+
+        foreach ($state['display']['courts'] as $court) {
+            $preferredGroup = $court['preferredGroupKey'] ?? null;
+            if ($preferredGroup === null) {
+                continue;
+            }
+
+            $match = $upNext
+                ->reject(fn (array $entry) => in_array($entry['id'], $assignedMatchIds, true))
+                ->firstWhere('groupKey', $preferredGroup);
+
+            if ($match === null) {
+                continue;
+            }
+
+            $this->assignMatchToCourt($tournamentId, $match['id'], $court['courtNumber']);
+            $assignedMatchIds[] = $match['id'];
+        }
+    }
+
     public function test_delete_tournament_removes_it_from_list(): void
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)
@@ -658,7 +698,7 @@ class TournamentTest extends TestCase
             ->assertNotFound();
     }
 
-    public function test_start_assigns_initial_matches_to_courts_by_group(): void
+    public function test_start_leaves_courts_open_for_manual_assignment(): void
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)
             ->postJson('/api/tournaments', [
@@ -685,18 +725,8 @@ class TournamentTest extends TestCase
 
         $courts = collect($state['display']['courts']);
         $this->assertCount(4, $courts);
-        $this->assertEquals(4, $courts->where('status', 'in_match')->count());
-
-        $groupByCourt = $courts
-            ->where('status', 'in_match')
-            ->mapWithKeys(fn ($court) => [
-                $court['courtNumber'] => $court['match']['groupKey'],
-            ]);
-
-        $this->assertEquals('A', $groupByCourt[1]);
-        $this->assertEquals('B', $groupByCourt[2]);
-        $this->assertEquals('C', $groupByCourt[3]);
-        $this->assertEquals('D', $groupByCourt[4]);
+        $this->assertEquals(4, $courts->where('status', 'available')->count());
+        $this->assertNotEmpty($state['display']['upNext']);
     }
 
     public function test_can_reduce_court_count_during_live_tournament(): void
@@ -734,7 +764,7 @@ class TournamentTest extends TestCase
         $this->assertCount(2, $state['display']['courts']);
     }
 
-    public function test_reduce_court_count_clears_assignments_and_reassigns_by_group(): void
+    public function test_reduce_court_count_clears_assignments_without_auto_reassign(): void
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)
             ->postJson('/api/tournaments', [
@@ -758,6 +788,13 @@ class TournamentTest extends TestCase
             ->postJson("/api/tournaments/{$tournamentId}/start")
             ->assertOk();
 
+        $state = $this->getJson("/api/tournaments/{$tournamentId}")->json();
+        $this->assignMatchToCourt(
+            $tournamentId,
+            $state['display']['upNext'][0]['id'],
+            1,
+        );
+
         $state = $this->withHeader('X-Admin-Pin', self::PIN)
             ->patchJson("/api/tournaments/{$tournamentId}", [
                 'court_count' => 2,
@@ -768,8 +805,9 @@ class TournamentTest extends TestCase
         $this->assertEquals(2, $state['tournament']['courtCount']);
         $courts = collect($state['display']['courts']);
         $this->assertCount(2, $courts);
-        $this->assertEquals('A', $courts->firstWhere('courtNumber', 1)['match']['groupKey']);
-        $this->assertEquals('B', $courts->firstWhere('courtNumber', 2)['match']['groupKey']);
+        $this->assertTrue(
+            $courts->every(fn (array $court) => $court['status'] === 'available'),
+        );
 
         $upNextGroups = collect($state['display']['upNext'])->pluck('groupKey')->all();
         $this->assertNotContains('C', $upNextGroups);
@@ -812,10 +850,10 @@ class TournamentTest extends TestCase
             ->pluck('match.groupKey')
             ->filter()
             ->all();
-        $this->assertEquals(['A', 'B'], $courtGroups);
+        $this->assertSame([], $courtGroups);
     }
 
-    public function test_scoring_frees_court_and_assigns_next_match_from_same_group(): void
+    public function test_scoring_frees_court_without_auto_assigning_next_match(): void
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)
             ->postJson('/api/tournaments', [
@@ -840,17 +878,16 @@ class TournamentTest extends TestCase
             ->assertOk();
 
         $before = $this->getJson("/api/tournaments/{$tournamentId}")->json();
-        $courtOneMatchId = collect($before['display']['courts'])
-            ->firstWhere('courtNumber', 1)['match']['id'];
+        $courtOneMatchId = $before['display']['upNext'][0]['id'];
+        $this->assignMatchToCourt($tournamentId, $courtOneMatchId, 1);
 
         $this->scoreMatch($tournamentId, $courtOneMatchId, 11, 5);
 
         $after = $this->getJson("/api/tournaments/{$tournamentId}")->json();
         $courtOne = collect($after['display']['courts'])->firstWhere('courtNumber', 1);
 
-        $this->assertEquals('in_match', $courtOne['status']);
-        $this->assertEquals('A', $courtOne['match']['groupKey']);
-        $this->assertNotEquals($courtOneMatchId, $courtOne['match']['id']);
+        $this->assertEquals('available', $courtOne['status']);
+        $this->assertNull($courtOne['match']);
     }
 
     public function test_activate_court_marks_match_as_playing(): void
@@ -878,8 +915,8 @@ class TournamentTest extends TestCase
             ->assertOk();
 
         $state = $this->getJson("/api/tournaments/{$tournamentId}")->json();
-        $matchId = collect($state['display']['courts'])
-            ->firstWhere('courtNumber', 1)['match']['id'];
+        $matchId = $state['display']['upNext'][0]['id'];
+        $this->assignMatchToCourt($tournamentId, $matchId, 1);
 
         \App\Models\TournamentMatch::query()
             ->where('id', $matchId)
@@ -924,13 +961,120 @@ class TournamentTest extends TestCase
         $state = $this->getJson("/api/tournaments/{$tournamentId}")->json();
         $waitingMatchId = collect($state['display']['upNext'])->first()['id'];
 
-        \App\Models\TournamentMatch::query()
-            ->where('tournament_id', $tournamentId)
-            ->where('court_number', 1)
-            ->update(['court_number' => null]);
+        $this->assignMatchToCourt($tournamentId, $waitingMatchId, 1);
+
+        $after = $this->getJson("/api/tournaments/{$tournamentId}")->json();
+        $courtOne = collect($after['display']['courts'])->firstWhere('courtNumber', 1);
+
+        $this->assertEquals('in_match', $courtOne['status']);
+        $this->assertEquals($waitingMatchId, $courtOne['match']['id']);
+    }
+
+    public function test_courts_expose_preferred_group_by_court_number(): void
+    {
+        $response = $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson('/api/tournaments', [
+                'name' => 'Court Group Priority',
+                'group_count' => 4,
+                'court_count' => 4,
+                'categories' => ['mens_doubles_open:intermediate'],
+            ])
+            ->assertCreated();
+
+        $tournamentId = $response->json('tournament.id');
+        $categoryKey = 'mens_doubles_open:intermediate';
+
+        foreach (['A1', 'A2', 'A3', 'A4', 'B1', 'B2', 'B3', 'B4'] as $name) {
+            $this->registerTeam($tournamentId, $categoryKey, [
+                $this->createMalePlayer($name, 'intermediate'),
+                $this->createMalePlayer($name.'P', 'intermediate'),
+            ]);
+        }
+
+        $state = $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson("/api/tournaments/{$tournamentId}/start")
+            ->assertOk()
+            ->json();
+
+        $courts = collect($state['display']['courts']);
+        $this->assertEquals('A', $courts->firstWhere('courtNumber', 1)['preferredGroupKey']);
+        $this->assertEquals('B', $courts->firstWhere('courtNumber', 2)['preferredGroupKey']);
+        $this->assertEquals('C', $courts->firstWhere('courtNumber', 3)['preferredGroupKey']);
+        $this->assertEquals('D', $courts->firstWhere('courtNumber', 4)['preferredGroupKey']);
+    }
+
+    public function test_manual_assign_rejects_wrong_group_when_preferred_group_has_matches(): void
+    {
+        $response = $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson('/api/tournaments', [
+                'name' => 'Court Group Guard',
+                'group_count' => 2,
+                'court_count' => 2,
+                'categories' => ['mens_singles_open:intermediate'],
+            ])
+            ->assertCreated();
+
+        $tournamentId = $response->json('tournament.id');
+        $categoryKey = 'mens_singles_open:intermediate';
+
+        foreach (['A1', 'A2', 'A3', 'B1', 'B2', 'B3'] as $name) {
+            $this->registerTeam($tournamentId, $categoryKey, [
+                $this->createMalePlayer($name, 'intermediate'),
+            ]);
+        }
 
         $this->withHeader('X-Admin-Pin', self::PIN)
-            ->postJson("/api/tournaments/{$tournamentId}/matches/{$waitingMatchId}/assign-court", [
+            ->postJson("/api/tournaments/{$tournamentId}/start")
+            ->assertOk();
+
+        $state = $this->getJson("/api/tournaments/{$tournamentId}")->json();
+        $groupBMatchId = collect($state['display']['upNext'])
+            ->firstWhere('groupKey', 'B')['id'];
+
+        $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson("/api/tournaments/{$tournamentId}/matches/{$groupBMatchId}/assign-court", [
+                'court_number' => 1,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Court 1 is reserved for Group A while that group still has matches waiting.');
+    }
+
+    public function test_admin_can_replace_court_match_before_scoring(): void
+    {
+        $response = $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson('/api/tournaments', [
+                'name' => 'Replace Court Match',
+                'group_count' => 2,
+                'court_count' => 2,
+                'categories' => ['mens_singles_open:intermediate'],
+            ])
+            ->assertCreated();
+
+        $tournamentId = $response->json('tournament.id');
+        $categoryKey = 'mens_singles_open:intermediate';
+
+        foreach (['A1', 'A2', 'A3', 'B1', 'B2', 'B3'] as $name) {
+            $this->registerTeam($tournamentId, $categoryKey, [
+                $this->createMalePlayer($name, 'intermediate'),
+            ]);
+        }
+
+        $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson("/api/tournaments/{$tournamentId}/start")
+            ->assertOk();
+
+        $state = $this->getJson("/api/tournaments/{$tournamentId}")->json();
+        $firstMatchId = collect($state['display']['upNext'])
+            ->firstWhere('groupKey', 'A')['id'];
+        $secondMatchId = collect($state['display']['upNext'])
+            ->where('groupKey', 'A')
+            ->skip(1)
+            ->first()['id'];
+
+        $this->assignMatchToCourt($tournamentId, $firstMatchId, 1);
+
+        $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson("/api/tournaments/{$tournamentId}/matches/{$secondMatchId}/replace-court", [
                 'court_number' => 1,
             ])
             ->assertOk();
@@ -939,7 +1083,11 @@ class TournamentTest extends TestCase
         $courtOne = collect($after['display']['courts'])->firstWhere('courtNumber', 1);
 
         $this->assertEquals('in_match', $courtOne['status']);
-        $this->assertEquals($waitingMatchId, $courtOne['match']['id']);
+        $this->assertEquals($secondMatchId, $courtOne['match']['id']);
+
+        $returnedToQueue = collect($after['display']['upNext'])
+            ->contains(fn (array $entry) => $entry['id'] === $firstMatchId);
+        $this->assertTrue($returnedToQueue);
     }
 
     public function test_up_next_lists_waiting_matches_when_all_courts_are_full(): void
@@ -969,6 +1117,9 @@ class TournamentTest extends TestCase
         $this->withHeader('X-Admin-Pin', self::PIN)
             ->postJson("/api/tournaments/{$tournamentId}/start")
             ->assertOk();
+
+        $state = $this->getJson("/api/tournaments/{$tournamentId}")->json();
+        $this->assignPreferredMatchesToCourts($tournamentId, $state);
 
         $after = $this->getJson("/api/tournaments/{$tournamentId}")->json();
         $upNext = $after['display']['upNext'];
@@ -1001,6 +1152,9 @@ class TournamentTest extends TestCase
             ->postJson("/api/tournaments/{$tournamentId}/start")
             ->assertOk();
 
+        $state = $this->getJson("/api/tournaments/{$tournamentId}")->json();
+        $this->assignMatchToCourt($tournamentId, $state['display']['upNext'][0]['id'], 1);
+
         $after = $this->getJson("/api/tournaments/{$tournamentId}")->json();
         $upNext = $after['display']['upNext'];
 
@@ -1025,7 +1179,7 @@ class TournamentTest extends TestCase
         $this->assertTrue($upNext[0]['isReady']);
     }
 
-    public function test_court_scheduling_avoids_back_to_back_when_alternatives_exist(): void
+    public function test_scoring_leaves_court_open_with_rested_matches_in_up_next(): void
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)
             ->postJson('/api/tournaments', [
@@ -1050,23 +1204,17 @@ class TournamentTest extends TestCase
             ->assertOk();
 
         $before = $this->getJson("/api/tournaments/{$tournamentId}")->json();
-        $courtOneMatch = collect($before['display']['courts'])
-            ->firstWhere('courtNumber', 1)['match'];
-        $firstMatchId = $courtOneMatch['id'];
+        $firstMatchId = $before['display']['upNext'][0]['id'];
+        $this->assignMatchToCourt($tournamentId, $firstMatchId, 1);
 
-        $this->prepareMatchForScoring($tournamentId, $firstMatchId);
         $this->scoreMatch($tournamentId, $firstMatchId, 11, 4);
 
         $after = $this->getJson("/api/tournaments/{$tournamentId}")->json();
-        $nextMatch = collect($after['display']['courts'])
-            ->firstWhere('courtNumber', 1)['match'];
+        $courtOne = collect($after['display']['courts'])->firstWhere('courtNumber', 1);
 
-        $this->assertNotNull($nextMatch);
-        $this->assertNotEquals($firstMatchId, $nextMatch['id']);
-        $this->assertEquals(
-            $courtOneMatch['groupKey'],
-            $nextMatch['groupKey'],
-        );
+        $this->assertEquals('available', $courtOne['status']);
+        $this->assertNull($courtOne['match']);
+        $this->assertTrue(collect($after['display']['upNext'])->contains('isReady', true));
     }
 
     public function test_round_robin_matches_are_scheduled_in_rest_friendly_rounds(): void
@@ -1426,7 +1574,7 @@ class TournamentTest extends TestCase
         );
     }
 
-    public function test_final_round_robin_matches_are_queued_to_courts_on_state_load(): void
+    public function test_final_round_robin_matches_wait_for_manual_court_assignment(): void
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)
             ->postJson('/api/tournaments', [
@@ -1465,16 +1613,13 @@ class TournamentTest extends TestCase
         $this->assertCount(3, $finalMatches);
 
         $assignedToCourt = $finalMatches->whereNotNull('courtNumber');
-        $this->assertGreaterThanOrEqual(1, $assignedToCourt->count());
+        $this->assertCount(0, $assignedToCourt);
 
         $assignedCourts = collect($after['display']['courts'])
             ->filter(fn (array $court) => $court['match'] !== null)
             ->values();
-        $this->assertGreaterThanOrEqual(1, $assignedCourts->count());
-        $this->assertEquals(
-            'final_round_robin',
-            $assignedCourts->first()['match']['phase']
-        );
+        $this->assertCount(0, $assignedCourts);
+        $this->assertCount(3, collect($after['display']['upNext'])->where('phase', 'final_round_robin'));
     }
 
     public function test_tournament_registration_does_not_appear_on_players_list(): void

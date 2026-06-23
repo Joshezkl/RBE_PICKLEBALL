@@ -138,10 +138,58 @@ class TournamentCourtService
             throw new \RuntimeException("Court {$courtNumber} is not available");
         }
 
+        $preferredGroupKey = $this->preferredGroupKeyForCourt($tournament, $courtNumber);
+        if (
+            $category !== null
+            && $category->phase === 'round_robin'
+            && $preferredGroupKey !== null
+            && $match->group_key !== $preferredGroupKey
+            && $this->groupHasUnassignedMatches($tournament, $category, $preferredGroupKey)
+        ) {
+            throw new \RuntimeException(
+                'Court '.$courtNumber.' is reserved for '
+                .$this->formatGroupLabel($preferredGroupKey)
+                .' while that group still has matches waiting.',
+            );
+        }
+
         $match->update([
             'court_number' => $courtNumber,
             'status' => 'on_court',
         ]);
+    }
+
+    public function replaceCourtMatch(
+        Tournament $tournament,
+        int $courtNumber,
+        TournamentMatch $match,
+    ): void {
+        if ($match->tournament_id !== $tournament->id) {
+            throw new \InvalidArgumentException('Match does not belong to this tournament');
+        }
+
+        $current = TournamentMatch::query()
+            ->where('tournament_id', $tournament->id)
+            ->where('court_number', $courtNumber)
+            ->whereIn('status', ['scheduled', 'on_court'])
+            ->first();
+
+        if ($current !== null && $current->id === $match->id) {
+            return;
+        }
+
+        if ($current !== null) {
+            if ($current->status !== 'scheduled' && $current->status !== 'on_court') {
+                throw new \RuntimeException('Current court match cannot be replaced');
+            }
+
+            $current->update([
+                'court_number' => null,
+                'status' => 'scheduled',
+            ]);
+        }
+
+        $this->assignMatchToCourt($tournament, $match->fresh(), $courtNumber);
     }
 
     public function activeCategory(Tournament $tournament): ?TournamentCategory
@@ -152,6 +200,46 @@ class TournamentCourtService
             ->get()
             ->sortBy(fn (TournamentCategory $category) => TournamentCategorySupport::label($category->category_key))
             ->first();
+    }
+
+    public function preferredGroupKeyForCourt(Tournament $tournament, int $courtNumber): ?string
+    {
+        $category = $this->activeCategory($tournament);
+
+        if ($category === null || $category->phase !== 'round_robin') {
+            return null;
+        }
+
+        $activeGroups = $this->activeRoundRobinGroupKeys($tournament, $category);
+        if ($activeGroups === []) {
+            return null;
+        }
+
+        $preferredIndex = ($courtNumber - 1) % count($activeGroups);
+
+        return $activeGroups[$preferredIndex] ?? null;
+    }
+
+    public function preferredCourtNumberForGroup(Tournament $tournament, ?string $groupKey): ?int
+    {
+        if ($groupKey === null) {
+            return null;
+        }
+
+        $category = $this->activeCategory($tournament);
+
+        if ($category === null || $category->phase !== 'round_robin') {
+            return null;
+        }
+
+        $activeGroups = $this->activeRoundRobinGroupKeys($tournament, $category);
+        $index = array_search($groupKey, $activeGroups, true);
+
+        if ($index === false) {
+            return null;
+        }
+
+        return $index + 1;
     }
 
     /**
@@ -173,12 +261,15 @@ class TournamentCourtService
 
         for ($courtNumber = 1; $courtNumber <= $courtCount; $courtNumber++) {
             $match = $assigned->get($courtNumber);
+            $preferredGroupKey = $this->preferredGroupKeyForCourt($tournament, $courtNumber);
 
             $courts[] = [
                 'courtNumber' => $courtNumber,
                 'status' => $match === null
                     ? 'available'
                     : ($match->status === 'on_court' ? 'in_match' : 'assigned'),
+                'preferredGroupKey' => $preferredGroupKey,
+                'preferredGroupLabel' => $this->formatGroupLabel($preferredGroupKey),
                 'match' => $match ? $this->formatCourtMatch($match) : null,
             ];
         }
@@ -224,7 +315,7 @@ class TournamentCourtService
             ->take($limit)
             ->load(['teamA', 'teamB', 'category'])
             ->map(fn (TournamentMatch $match) => [
-                ...$this->formatUpNextMatch($match),
+                ...$this->formatUpNextMatch($match, $tournament),
                 'isReady' => ! $this->matchInvolvesAnyTeam($match, $busyTeams),
             ])
             ->values()
@@ -317,17 +408,17 @@ class TournamentCourtService
             }
         }
 
+        $defaultGroup = $this->preferredGroupKeyForCourt($tournament, $courtNumber);
+
+        if ($defaultGroup !== null) {
+            $fromDefaultGroup = $candidates->firstWhere('group_key', $defaultGroup);
+            if ($fromDefaultGroup !== null) {
+                return $fromDefaultGroup;
+            }
+        }
+
         if ($category->phase === 'round_robin') {
             $activeGroups = $this->activeRoundRobinGroupKeys($tournament, $category);
-            $preferredIndex = ($courtNumber - 1) % max(1, count($activeGroups));
-            $defaultGroup = $activeGroups[$preferredIndex] ?? null;
-
-            if ($defaultGroup !== null) {
-                $fromDefaultGroup = $candidates->firstWhere('group_key', $defaultGroup);
-                if ($fromDefaultGroup !== null) {
-                    return $fromDefaultGroup;
-                }
-            }
 
             $fromActiveBatch = $candidates->first(
                 fn (TournamentMatch $match) => in_array($match->group_key, $activeGroups, true),
@@ -554,17 +645,37 @@ class TournamentCourtService
     /**
      * @return array<string, mixed>
      */
-    private function formatUpNextMatch(TournamentMatch $match): array
-    {
+    private function formatUpNextMatch(
+        TournamentMatch $match,
+        ?Tournament $tournament = null,
+    ): array {
         return [
             'id' => $match->id,
             'categoryLabel' => TournamentCategorySupport::label($match->category->category_key),
             'phase' => $match->phase,
             'groupKey' => $match->group_key,
             'groupLabel' => $this->formatGroupLabel($match->group_key),
+            'recommendedCourtNumber' => $tournament !== null
+                ? $this->preferredCourtNumberForGroup($tournament, $match->group_key)
+                : null,
             'teamA' => $match->teamA?->display_name,
             'teamB' => $match->teamB?->display_name,
         ];
+    }
+
+    private function groupHasUnassignedMatches(
+        Tournament $tournament,
+        TournamentCategory $category,
+        string $groupKey,
+    ): bool {
+        return TournamentMatch::query()
+            ->where('tournament_category_id', $category->id)
+            ->where('group_key', $groupKey)
+            ->where('status', 'scheduled')
+            ->whereNull('court_number')
+            ->whereNotNull('team_a_id')
+            ->whereNotNull('team_b_id')
+            ->exists();
     }
 
     private function formatGroupLabel(?string $groupKey): ?string

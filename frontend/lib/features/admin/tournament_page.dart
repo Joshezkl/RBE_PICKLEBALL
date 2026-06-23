@@ -147,13 +147,55 @@ class _TournamentPageState extends State<TournamentPage> {
       context: context,
       builder: (context) => _TournamentAssignCourtDialog(
         courtNumber: court.courtNumber,
-        matches: candidates,
+        preferredGroupLabel: court.preferredGroupLabel,
+        matches: tournamentCandidatesForCourt(
+          candidates,
+          court.preferredGroupKey,
+        ),
       ),
     );
     if (selected == null) return;
 
     try {
       final state = await _api.assignTournamentCourtMatch(
+        active.tournament.id,
+        selected.id,
+        courtNumber: court.courtNumber,
+      );
+      if (mounted) setState(() => _active = state);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  Future<void> _replaceCourt(
+    TournamentCourtInfo court,
+    List<TournamentUpNextMatchInfo> candidates,
+  ) async {
+    final active = _active;
+    if (active == null || !court.hasMatch || candidates.isEmpty) return;
+
+    final currentMatchId = court.match?.id;
+    final filtered = tournamentCandidatesForCourt(
+      candidates,
+      court.preferredGroupKey,
+      excludeMatchId: currentMatchId,
+    );
+    if (filtered.isEmpty) return;
+
+    final selected = await showDialog<TournamentUpNextMatchInfo>(
+      context: context,
+      builder: (context) => _TournamentAssignCourtDialog(
+        courtNumber: court.courtNumber,
+        preferredGroupLabel: court.preferredGroupLabel,
+        replacing: true,
+        matches: filtered,
+      ),
+    );
+    if (selected == null) return;
+
+    try {
+      final state = await _api.replaceTournamentCourtMatch(
         active.tournament.id,
         selected.id,
         courtNumber: court.courtNumber,
@@ -507,6 +549,7 @@ class _TournamentPageState extends State<TournamentPage> {
               onEditPlayer: _editPlayerName,
               onScoreMatch: _scoreMatch,
               onAssignCourt: _assignCourt,
+              onReplaceCourt: _replaceCourt,
               onCourtTap: _handleCourtTap,
               onEditCourtCount: _editCourtCount,
             )
@@ -769,6 +812,7 @@ class _TournamentDetailView extends StatelessWidget {
     required this.onEditPlayer,
     required this.onScoreMatch,
     required this.onAssignCourt,
+    required this.onReplaceCourt,
     required this.onCourtTap,
     required this.onEditCourtCount,
   });
@@ -789,6 +833,10 @@ class _TournamentDetailView extends StatelessWidget {
     TournamentCourtInfo court,
     List<TournamentUpNextMatchInfo> candidates,
   ) onAssignCourt;
+  final Future<void> Function(
+    TournamentCourtInfo court,
+    List<TournamentUpNextMatchInfo> candidates,
+  ) onReplaceCourt;
   final void Function(TournamentCourtInfo court, TournamentMatchInfo? match)
       onCourtTap;
   final VoidCallback onEditCourtCount;
@@ -890,6 +938,7 @@ class _TournamentDetailView extends StatelessWidget {
             state: state,
             courtCount: t.courtCount,
             onAssignCourt: onAssignCourt,
+            onReplaceCourt: onReplaceCourt,
             onCourtTap: onCourtTap,
             onEditCourtCount: onEditCourtCount,
           ),
@@ -1025,6 +1074,7 @@ class _TournamentCourtsPanel extends StatelessWidget {
     required this.state,
     required this.courtCount,
     required this.onAssignCourt,
+    required this.onReplaceCourt,
     required this.onCourtTap,
     required this.onEditCourtCount,
   });
@@ -1036,6 +1086,10 @@ class _TournamentCourtsPanel extends StatelessWidget {
     TournamentCourtInfo court,
     List<TournamentUpNextMatchInfo> candidates,
   ) onAssignCourt;
+  final Future<void> Function(
+    TournamentCourtInfo court,
+    List<TournamentUpNextMatchInfo> candidates,
+  ) onReplaceCourt;
   final void Function(TournamentCourtInfo court, TournamentMatchInfo? match)
       onCourtTap;
   final VoidCallback onEditCourtCount;
@@ -1061,8 +1115,10 @@ class _TournamentCourtsPanel extends StatelessWidget {
     final hasOpenCourt = display.courts.any(
       (court) => !court.isActive && !court.isAssigned,
     );
+    final hasOccupiedCourt = display.courts.any((court) => court.hasMatch);
     final courtCardHeight =
-        tournamentCourtCardHeightFor(maxSlotsPerTeam) + (hasOpenCourt ? 34.0 : 0.0);
+        tournamentCourtCardHeightFor(maxSlotsPerTeam) +
+        ((hasOpenCourt || hasOccupiedCourt) ? 34.0 : 0.0);
 
     return RpcCard.compact(
       child: Column(
@@ -1105,7 +1161,7 @@ class _TournamentCourtsPanel extends StatelessWidget {
           ],
           const SizedBox(height: 4),
           Text(
-            'OPEN courts — tap Assign court to start play. PLAYING courts — tap to enter score.',
+            'Each court is paired with a group (Court 1 → Group A, etc.). OPEN — Assign court. PLAYING — tap to score or Change match.',
             style: RpcTypography.caption(context).copyWith(
               color: c.textMuted,
               fontSize: 10,
@@ -1136,6 +1192,7 @@ class _TournamentCourtsPanel extends StatelessWidget {
                         defaultSlotsPerTeam: defaultSlotsPerTeam,
                         pendingMatches: display.upNext,
                         onAssignCourt: onAssignCourt,
+                        onReplaceCourt: onReplaceCourt,
                         onCourtTap: onCourtTap,
                       ),
                     ),
@@ -1169,7 +1226,9 @@ class _TournamentCourtsPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: RpcSpacing.sm),
-          TournamentUpNextStrip(matches: display.upNext),
+          TournamentUpNextStrip(
+            matches: tournamentUpNextSortedByCourt(display.upNext),
+          ),
         ],
       ),
     );
@@ -1180,10 +1239,14 @@ class _TournamentAssignCourtDialog extends StatelessWidget {
   const _TournamentAssignCourtDialog({
     required this.courtNumber,
     required this.matches,
+    this.preferredGroupLabel,
+    this.replacing = false,
   });
 
   final int courtNumber;
   final List<TournamentUpNextMatchInfo> matches;
+  final String? preferredGroupLabel;
+  final bool replacing;
 
   @override
   Widget build(BuildContext context) {
@@ -1191,26 +1254,48 @@ class _TournamentAssignCourtDialog extends StatelessWidget {
 
     return AlertDialog(
       insetPadding: RpcLayout.dialogInsetPadding(context),
-      title: Text('Assign to Court $courtNumber'),
+      title: Text(replacing ? 'Change Court $courtNumber' : 'Assign to Court $courtNumber'),
       content: ConstrainedBox(
         constraints: RpcLayout.dialogConstraints(context, maxWidth: 420),
         child: SizedBox(
           width: double.maxFinite,
           child: matches.isEmpty
             ? Text(
-                'No matches waiting for a court.',
+                preferredGroupLabel != null
+                    ? 'No ${preferredGroupLabel!} matches waiting for this court.'
+                    : 'No matches waiting for a court.',
                 style: RpcTypography.body(context).copyWith(color: c.textMuted),
               )
-            : ListView.separated(
-                shrinkWrap: true,
-                itemCount: matches.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final match = matches[index];
-                  final group =
-                      match.groupLabel != null ? '${match.groupLabel} · ' : '';
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (preferredGroupLabel != null) ...[
+                    Text(
+                      replacing
+                          ? 'Choose a new ${preferredGroupLabel!} match for this court.'
+                          : 'Showing ${preferredGroupLabel!} matches for this court.',
+                      style: RpcTypography.caption(context).copyWith(
+                        color: c.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: matches.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final match = matches[index];
+                        final group = match.groupLabel != null
+                            ? '${match.groupLabel} · '
+                            : '';
+                        final queueLabel = match.isReady
+                            ? (index == 0 ? 'Next · ' : 'On deck · ')
+                            : 'Waiting · ';
 
-                  return Material(
+                        return Material(
                     color: c.elevatedSurface,
                     borderRadius: BorderRadius.circular(8),
                     child: InkWell(
@@ -1228,7 +1313,7 @@ class _TournamentAssignCourtDialog extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '$group${match.teamA ?? 'TBD'} vs ${match.teamB ?? 'TBD'}',
+                              '$queueLabel$group${match.teamA ?? 'TBD'} vs ${match.teamB ?? 'TBD'}',
                               style: RpcTypography.bodySemibold(context),
                             ),
                             const SizedBox(height: 4),
@@ -1248,6 +1333,9 @@ class _TournamentAssignCourtDialog extends StatelessWidget {
                     ),
                   );
                 },
+                    ),
+                  ),
+                ],
               ),
         ),
       ),
@@ -1268,6 +1356,7 @@ class _TournamentCourtScoreCard extends StatelessWidget {
     required this.defaultSlotsPerTeam,
     required this.pendingMatches,
     required this.onAssignCourt,
+    required this.onReplaceCourt,
     required this.onCourtTap,
   });
 
@@ -1279,6 +1368,10 @@ class _TournamentCourtScoreCard extends StatelessWidget {
     TournamentCourtInfo court,
     List<TournamentUpNextMatchInfo> candidates,
   ) onAssignCourt;
+  final Future<void> Function(
+    TournamentCourtInfo court,
+    List<TournamentUpNextMatchInfo> candidates,
+  ) onReplaceCourt;
   final void Function(TournamentCourtInfo court, TournamentMatchInfo? match)
       onCourtTap;
 
@@ -1289,6 +1382,12 @@ class _TournamentCourtScoreCard extends StatelessWidget {
     final isAssigned = court.isAssigned;
     final isOpen = !isActive && !isAssigned;
     final courtMatch = court.match;
+    final courtCandidates = tournamentCandidatesForCourt(
+      pendingMatches,
+      court.preferredGroupKey,
+      excludeMatchId: court.match?.id,
+    );
+    final replaceCandidates = court.hasMatch ? courtCandidates : const <TournamentUpNextMatchInfo>[];
     final slotsPerTeam = _tournamentSlotsPerTeam(match);
     final layoutMatch = match != null
         ? _tournamentMatchForLayout(match)
@@ -1329,7 +1428,18 @@ class _TournamentCourtScoreCard extends StatelessWidget {
             ),
           ],
         ),
-        if (courtMatch?.groupLabel != null) ...[
+        if (isOpen && court.preferredGroupLabel != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            court.preferredGroupLabel!,
+            textAlign: TextAlign.center,
+            style: RpcTypography.caption(context).copyWith(
+              color: c.textMuted,
+              fontWeight: FontWeight.w600,
+              fontSize: 10,
+            ),
+          ),
+        ] else if (courtMatch?.groupLabel != null) ...[
           const SizedBox(height: 4),
           Text(
             courtMatch!.groupLabel!,
@@ -1384,7 +1494,7 @@ class _TournamentCourtScoreCard extends StatelessWidget {
         if (isOpen) ...[
           const SizedBox(height: 6),
           FilledButton(
-            onPressed: pendingMatches.isNotEmpty
+            onPressed: courtCandidates.isNotEmpty
                 ? () => onAssignCourt(court, pendingMatches)
                 : null,
             style: FilledButton.styleFrom(
@@ -1395,6 +1505,23 @@ class _TournamentCourtScoreCard extends StatelessWidget {
             ),
             child: const Text(
               'Assign court',
+              style: TextStyle(fontSize: 11),
+            ),
+          ),
+        ] else if (court.hasMatch) ...[
+          const SizedBox(height: 6),
+          OutlinedButton(
+            onPressed: replaceCandidates.isNotEmpty
+                ? () => onReplaceCourt(court, pendingMatches)
+                : null,
+            style: OutlinedButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'Change match',
               style: TextStyle(fontSize: 11),
             ),
           ),

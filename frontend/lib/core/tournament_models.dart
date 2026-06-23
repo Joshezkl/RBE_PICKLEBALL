@@ -615,11 +615,15 @@ class TournamentCourtInfo {
   TournamentCourtInfo({
     required this.courtNumber,
     required this.status,
+    this.preferredGroupKey,
+    this.preferredGroupLabel,
     this.match,
   });
 
   final int courtNumber;
   final String status;
+  final String? preferredGroupKey;
+  final String? preferredGroupLabel;
   final TournamentCourtMatchInfo? match;
 
   bool get isActive => status == 'in_match' && match != null;
@@ -630,6 +634,8 @@ class TournamentCourtInfo {
     return TournamentCourtInfo(
       courtNumber: json['courtNumber'] as int,
       status: json['status'] as String? ?? 'available',
+      preferredGroupKey: json['preferredGroupKey'] as String?,
+      preferredGroupLabel: json['preferredGroupLabel'] as String?,
       match: json['match'] != null
           ? TournamentCourtMatchInfo.fromJson(
               json['match'] as Map<String, dynamic>,
@@ -646,6 +652,7 @@ class TournamentUpNextMatchInfo {
     required this.phase,
     this.groupKey,
     this.groupLabel,
+    this.recommendedCourtNumber,
     this.teamA,
     this.teamB,
     this.isReady = true,
@@ -656,6 +663,7 @@ class TournamentUpNextMatchInfo {
   final String phase;
   final String? groupKey;
   final String? groupLabel;
+  final int? recommendedCourtNumber;
   final String? teamA;
   final String? teamB;
   final bool isReady;
@@ -667,6 +675,7 @@ class TournamentUpNextMatchInfo {
       phase: json['phase'] as String? ?? 'round_robin',
       groupKey: json['groupKey'] as String?,
       groupLabel: json['groupLabel'] as String?,
+      recommendedCourtNumber: json['recommendedCourtNumber'] as int?,
       teamA: json['teamA'] as String?,
       teamB: json['teamB'] as String?,
       isReady: json['isReady'] as bool? ?? true,

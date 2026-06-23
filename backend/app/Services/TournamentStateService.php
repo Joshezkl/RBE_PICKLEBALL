@@ -48,11 +48,6 @@ class TournamentStateService
             }
         }
 
-        if (in_array($tournament->fresh()->status, ['round_robin', 'single_elimination', 'final_round_robin'], true)) {
-            $this->courtService->syncAssignments($tournament->fresh());
-            $tournament->refresh();
-        }
-
         $tournament->load([
             'categories.teams.members.clubPlayer',
             'matches.teamA.members.clubPlayer',
