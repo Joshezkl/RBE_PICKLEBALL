@@ -46,7 +46,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => strtolower((string) env('DB_CONNECTION', 'sqlite')),
 
     /*
     |--------------------------------------------------------------------------

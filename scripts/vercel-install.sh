@@ -42,6 +42,7 @@ fi
 
 echo "==> Discovering Laravel packages"
 php artisan package:discover --ansi
+php artisan config:clear --ansi
 
 if [ -n "${APP_KEY:-}" ] \
   && [ -n "${DB_HOST:-}" ] \
