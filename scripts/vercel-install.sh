@@ -23,6 +23,9 @@ export REQUEST_URI="/"
 export SCRIPT_NAME="/index.php"
 unset HTTP_HOST HTTPS SERVER_NAME QUERY_STRING 2>/dev/null || true
 
+# shellcheck disable=SC1091
+source "$ROOT/scripts/vercel-env.sh"
+
 COMPOSER_BIN="${COMPOSER_BIN:-/tmp/composer}"
 if ! command -v composer >/dev/null 2>&1; then
   echo "==> Downloading Composer"
@@ -49,8 +52,11 @@ if [ -n "${APP_KEY:-}" ] \
   && [ -n "${DB_DATABASE:-}" ] \
   && [ -n "${DB_USERNAME:-}" ] \
   && [ -n "${DB_PASSWORD:-}" ]; then
-  echo "==> Running database migrations"
-  php artisan migrate --force --no-ansi || echo "WARN: migrations failed — check DB_* env vars"
+  echo "==> Running database migrations (host=${DB_HOST}, database=${DB_DATABASE})"
+  php artisan migrate --force --no-ansi || {
+    echo "WARN: migrations failed — check DB_* env vars and TiDB IP allowlist (0.0.0.0/0)"
+    php artisan migrate --force --no-ansi 2>&1 | tail -5 || true
+  }
 else
   echo "==> DB not fully configured — skipping migrations (need DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD)"
 fi

@@ -37,6 +37,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 $hint = 'Database does not exist yet. Create it in your MySQL provider (e.g. rpc_queue), then redeploy so migrations can run.';
             } elseif (str_contains($detail, "doesn't exist") || str_contains($detail, 'no such table')) {
                 $hint = 'Database is reachable but tables are missing. Redeploy with DB_* vars set so migrations run during the Vercel build.';
+            } elseif (str_contains($detail, 'getaddrinfo') || str_contains($detail, 'php_network_getaddresses')) {
+                $hint = 'Vercel cannot resolve or reach the database host. Re-enter DB_HOST without spaces or https://, set DB_PORT=4000 for TiDB, and in TiDB Cloud enable a public endpoint with IP allowlist 0.0.0.0/0.';
             } elseif (str_contains($detail, 'Connection refused') || str_contains($detail, 'timed out')) {
                 $hint = 'Cannot reach the database host. Check DB_HOST, DB_PORT, and allow external connections from your MySQL provider.';
             }
