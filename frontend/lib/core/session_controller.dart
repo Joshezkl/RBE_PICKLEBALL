@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'admin_pin_controller.dart';
 import 'api_client.dart';
 import 'models.dart';
 import 'websocket_service.dart';
@@ -29,6 +30,13 @@ class SessionController extends ChangeNotifier {
   void setAdminPin(String pin) {
     adminPin = pin;
     api.setAdminPin(pin);
+  }
+
+  void _syncAdminPinFromGlobal() {
+    final pin = rpcAdminPinController.pin;
+    if (pin.isNotEmpty) {
+      setAdminPin(pin);
+    }
   }
 
   Future<void> initialize({bool readOnly = false}) async {
@@ -241,6 +249,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<bool> _mutate(Future<SessionState> Function() action) async {
+    _syncAdminPinFromGlobal();
     error = null;
     try {
       state = await action();
@@ -261,6 +270,7 @@ class SessionController extends ChangeNotifier {
     final sessionId = state?.session.id;
     if (sessionId == null) return null;
 
+    _syncAdminPinFromGlobal();
     loading = true;
     error = null;
     notifyListeners();
@@ -285,6 +295,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _run(Future<SessionState> Function() action) async {
+    _syncAdminPinFromGlobal();
     loading = true;
     error = null;
     notifyListeners();

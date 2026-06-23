@@ -11,6 +11,7 @@ import '../../core/widgets/collapsible_section.dart';
 import '../../core/widgets/next_up_badge.dart';
 import '../../core/widgets/check_in_qr_panel.dart';
 import '../../core/widgets/rpc_card.dart';
+import '../../core/widgets/admin_pin_entry.dart';
 import '../../core/widgets/rpc_error_banner.dart';
 import '../../core/widgets/rpc_feature_toggle.dart';
 import '../../core/widgets/rpc_inline_stat.dart';
@@ -316,7 +317,30 @@ class _AdminPageState extends State<AdminPage> {
       ),
     );
     if (confirmed != true) return;
+    _controller.setAdminPin(rpcAdminPinController.pin);
     await _controller.endSession();
+  }
+
+  Widget _buildAdminPinPrompt() {
+    return AdminPinEntry(
+      controller: _pinController,
+      compact: true,
+      message: isAdminPinErrorMessage(_controller.error)
+          ? _controller.error
+          : null,
+      onChanged: (value) {
+        _controller.setAdminPin(value);
+        if (isAdminPinErrorMessage(_controller.error)) {
+          _controller.error = null;
+        }
+      },
+      onDismiss: isAdminPinErrorMessage(_controller.error)
+          ? () {
+              _controller.error = null;
+              setState(() {});
+            }
+          : null,
+    );
   }
 
   @override
@@ -340,7 +364,8 @@ class _AdminPageState extends State<AdminPage> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_controller.error != null)
+          if (_controller.error != null &&
+              !isAdminPinErrorMessage(_controller.error))
             RpcErrorBanner(
               message: _controller.error!,
               onDismiss: () {
@@ -355,8 +380,12 @@ class _AdminPageState extends State<AdminPage> {
                 padding: const EdgeInsets.only(top: RpcSpacing.md),
                 child: SessionReportView(report: _controller.lastReport!),
               ),
-          ] else
+          ] else ...[
+            if (!rpcAdminPinController.isSet ||
+                isAdminPinErrorMessage(_controller.error))
+              _buildAdminPinPrompt(),
             _buildActiveSessionBody(state),
+          ],
         ],
       ),
     );
