@@ -1,7 +1,6 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
+import '../../core/adaptive_poll_timer.dart';
 import '../../core/api_client.dart';
 import '../../core/models.dart';
 import '../../core/theme/rpc_spacing.dart';
@@ -55,7 +54,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
   bool _loading = false;
   String? _error;
-  Timer? _pollTimer;
+  AdaptivePollTimer? _pollTimer;
 
   int get _seasonYear => DateTime.now().year;
 
@@ -77,12 +76,16 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         ? LeaderboardSortMode.currentSession
         : LeaderboardSortMode.overall;
     _loadAll(silent: false);
-    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _loadAll(silent: true));
+    _pollTimer = AdaptivePollTimer(
+      foregroundInterval: const Duration(seconds: 8),
+      backgroundInterval: const Duration(seconds: 20),
+      onPoll: () => _loadAll(silent: true),
+    )..start();
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _pollTimer?.stop();
     super.dispose();
   }
 

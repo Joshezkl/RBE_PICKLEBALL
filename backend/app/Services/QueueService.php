@@ -175,7 +175,7 @@ class QueueService
             ->where('play_session_id', $session->id)
             ->orderBy('queue_type')
             ->orderBy('position')
-            ->with('player')
+            ->with(['player.clubPlayer'])
             ->get();
 
         foreach ($entries as $entry) {

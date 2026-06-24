@@ -45,7 +45,10 @@ fi
 
 echo "==> Discovering Laravel packages"
 php artisan package:discover --ansi
-php artisan config:clear --ansi
+
+echo "==> Caching Laravel routes and config for faster cold starts"
+php artisan route:cache --no-ansi
+php artisan config:cache --no-ansi
 
 if [ -n "${APP_KEY:-}" ] \
   && [ -n "${DB_HOST:-}" ] \

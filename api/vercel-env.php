@@ -134,6 +134,7 @@ function rbe_vercel_env_map(): array
 function rbe_inject_env(array $values): void
 {
     foreach ($values as $key => $value) {
+        putenv("{$key}={$value}");
         $_ENV[$key] = $value;
         $_SERVER[$key] = $value;
     }

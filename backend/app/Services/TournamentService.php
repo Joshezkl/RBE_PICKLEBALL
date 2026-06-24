@@ -408,13 +408,21 @@ class TournamentService
 
     private function seedCategories(Tournament $tournament, array $enabledKeys): void
     {
-        foreach (TournamentCategorySupport::allCategoryKeys() as $key) {
-            TournamentCategory::query()->create([
+        $now = now();
+        $rows = array_map(
+            fn (string $key) => [
                 'tournament_id' => $tournament->id,
                 'category_key' => $key,
                 'is_enabled' => in_array($key, $enabledKeys, true),
                 'phase' => 'setup',
-            ]);
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            TournamentCategorySupport::allCategoryKeys(),
+        );
+
+        foreach (array_chunk($rows, 50) as $chunk) {
+            TournamentCategory::query()->insert($chunk);
         }
     }
 

@@ -19,13 +19,6 @@ if (getenv('VERCEL') || getenv('VERCEL_ENV') || getenv('VERCEL_URL')) {
     }
     $_ENV['VIEW_COMPILED_PATH'] = "{$tmp}/views";
     $_SERVER['VIEW_COMPILED_PATH'] = "{$tmp}/views";
-
-    foreach (['config.php', 'routes-v7.php', 'events.php', 'services.php'] as $cacheFile) {
-        $path = $backendRoot.'/bootstrap/cache/'.$cacheFile;
-        if (is_file($path)) {
-            @unlink($path);
-        }
-    }
 }
 
 $onVercel = (bool) (getenv('VERCEL') ?: getenv('VERCEL_ENV') ?: getenv('VERCEL_URL'));

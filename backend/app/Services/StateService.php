@@ -6,6 +6,7 @@ use App\Models\Court;
 use App\Models\MatchGame;
 use App\Models\PlaySession;
 use App\Support\MatchMode;
+use Illuminate\Support\Collection;
 
 class StateService
 {
@@ -19,42 +20,49 @@ class StateService
 
     public function build(PlaySession $session): array
     {
-        $session->refresh();
+        $matchRelations = [
+            'teamAPlayer1',
+            'teamAPlayer2',
+            'teamBPlayer1',
+            'teamBPlayer2',
+        ];
 
         $courts = Court::query()
             ->where('play_session_id', $session->id)
             ->orderBy('court_number')
-            ->get()
-            ->map(function (Court $court) use ($session) {
-                $match = null;
-                if ($court->current_match_id) {
-                    $matchModel = MatchGame::query()
-                        ->with(['teamAPlayer1', 'teamAPlayer2', 'teamBPlayer1', 'teamBPlayer2'])
-                        ->find($court->current_match_id);
-                    if ($matchModel) {
-                        $match = $this->matchService->formatMatch($matchModel);
-                    }
-                }
+            ->get();
 
-                return array_merge([
-                    'id' => $court->id,
-                    'courtNumber' => $court->court_number,
-                    'status' => $court->status,
-                    'skillBracket' => $court->skill_bracket,
-                    'isChallengeCourt' => (bool) $court->is_challenge_court,
-                    'currentMatchId' => $court->current_match_id,
-                    'match' => $match,
-                ], $this->challengeCourtService->courtState($session, $court));
-            });
+        $matchesById = $this->loadCurrentMatches($courts, $matchRelations);
 
         $queues = $this->queueService->getQueues($session);
         $groupSize = $session->groupSize();
         $queueTypes = $this->matchModeService->queueTypesFor($session);
+        $challengeCourt = $this->challengeCourtService->buildState($session);
+
+        $courtPayloads = $courts->map(function (Court $court) use ($session, $matchesById) {
+            $match = null;
+            if ($court->current_match_id) {
+                $matchModel = $matchesById->get($court->current_match_id);
+                if ($matchModel) {
+                    $match = $this->matchService->formatMatch($matchModel);
+                }
+            }
+
+            return array_merge([
+                'id' => $court->id,
+                'courtNumber' => $court->court_number,
+                'status' => $court->status,
+                'skillBracket' => $court->skill_bracket,
+                'isChallengeCourt' => (bool) $court->is_challenge_court,
+                'currentMatchId' => $court->current_match_id,
+                'match' => $match,
+            ], $this->challengeCourtService->courtState($session, $court));
+        });
 
         $history = MatchGame::query()
             ->where('play_session_id', $session->id)
             ->where('status', 'finished')
-            ->with(['teamAPlayer1', 'teamAPlayer2', 'teamBPlayer1', 'teamBPlayer2', 'court'])
+            ->with([...$matchRelations, 'court'])
             ->orderByDesc('finished_at')
             ->limit(20)
             ->get()
@@ -83,12 +91,35 @@ class StateService
                 'endedAt' => $session->ended_at?->toIso8601String(),
             ],
             'queues' => $queues,
-            'courts' => $courts,
+            'courts' => $courtPayloads,
             'upNext' => $this->buildUpNext($session, $queues, $groupSize),
             'matchHistory' => $history,
             'pendingPayments' => $this->paymentService->pendingForSession($session),
-            'challengeCourt' => $this->challengeCourtService->buildState($session),
+            'challengeCourt' => $challengeCourt,
         ];
+    }
+
+    /**
+     * @param  list<string>  $matchRelations
+     * @return Collection<int, MatchGame>
+     */
+    private function loadCurrentMatches(Collection $courts, array $matchRelations): Collection
+    {
+        $matchIds = $courts
+            ->pluck('current_match_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($matchIds->isEmpty()) {
+            return collect();
+        }
+
+        return MatchGame::query()
+            ->whereIn('id', $matchIds)
+            ->with($matchRelations)
+            ->get()
+            ->keyBy('id');
     }
 
     private function buildUpNext(PlaySession $session, array $queues, int $groupSize): array

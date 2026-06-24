@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'admin_pin_controller.dart';
+import 'adaptive_poll_timer.dart';
 import 'api_client.dart';
 import 'models.dart';
 import 'websocket_service.dart';
@@ -23,7 +24,7 @@ class SessionController extends ChangeNotifier {
   String? error;
   String? adminPin;
 
-  Timer? _pollTimer;
+  AdaptivePollTimer? _pollTimer;
 
   bool get hasActiveSession => state?.session.isActive ?? false;
 
@@ -62,24 +63,29 @@ class SessionController extends ChangeNotifier {
   }
 
   void _startLiveUpdates({required bool readOnly}) {
-    _pollTimer?.cancel();
+    _pollTimer?.stop();
     if (state == null) return;
 
     final sessionId = state!.session.id;
 
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      try {
+    _pollTimer = AdaptivePollTimer(
+      onPoll: () async {
         final fresh = await api.getSessionState(sessionId);
         state = fresh;
         notifyListeners();
-      } catch (_) {}
-    });
+      },
+    )..start();
+
+    _pollTimer?.setLiveUpdatesActive(liveUpdates.isConnected);
 
     liveUpdates.connect(
       sessionId: sessionId,
       onState: (fresh) {
         state = fresh;
         notifyListeners();
+      },
+      onConnectionChanged: (connected) {
+        _pollTimer?.setLiveUpdatesActive(connected);
       },
     );
   }
@@ -279,7 +285,7 @@ class SessionController extends ChangeNotifier {
       final result = await api.endSession(sessionId);
       state = result.state;
       lastReport = result.report;
-      _pollTimer?.cancel();
+      _pollTimer?.stop();
       liveUpdates.disconnect();
       return result.report;
     } on ApiException catch (e) {
@@ -314,7 +320,7 @@ class SessionController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _pollTimer?.stop();
     liveUpdates.disconnect();
     super.dispose();
   }

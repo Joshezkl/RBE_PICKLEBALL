@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/check_in_url.dart';
+import 'core/page_visibility.dart';
 import 'core/theme/rpc_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/admin/admin_page.dart';
@@ -31,17 +32,31 @@ class RpcApp extends StatefulWidget {
   State<RpcApp> createState() => _RpcAppState();
 }
 
-class _RpcAppState extends State<RpcApp> {
+class _RpcAppState extends State<RpcApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     rpcThemeController.addListener(_onThemeChanged);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     rpcThemeController.removeListener(_onThemeChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final visible = switch (state) {
+      AppLifecycleState.resumed => true,
+      AppLifecycleState.inactive => true,
+      AppLifecycleState.hidden => false,
+      AppLifecycleState.paused => false,
+      AppLifecycleState.detached => false,
+    };
+    rpcPageVisibility.setVisible(visible);
   }
 
   void _onThemeChanged() => setState(() {});

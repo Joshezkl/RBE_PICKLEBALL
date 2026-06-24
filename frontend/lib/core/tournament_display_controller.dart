@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'adaptive_poll_timer.dart';
 import 'api_client.dart';
 import 'tournament_models.dart';
 
@@ -9,7 +10,7 @@ class TournamentDisplayController extends ChangeNotifier {
   TournamentDisplayController({ApiClient? api}) : _api = api ?? ApiClient();
 
   final ApiClient _api;
-  Timer? _pollTimer;
+  AdaptivePollTimer? _pollTimer;
 
   TournamentState? _state;
   bool _loading = true;
@@ -21,8 +22,11 @@ class TournamentDisplayController extends ChangeNotifier {
 
   Future<void> initialize() async {
     await refresh();
-    _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => refresh());
+    _pollTimer = AdaptivePollTimer(
+      foregroundInterval: const Duration(seconds: 5),
+      backgroundInterval: const Duration(seconds: 15),
+      onPoll: refresh,
+    )..start();
   }
 
   Future<void> refresh() async {
@@ -40,7 +44,7 @@ class TournamentDisplayController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
+    _pollTimer?.stop();
     super.dispose();
   }
 }
