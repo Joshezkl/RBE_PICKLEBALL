@@ -54,12 +54,11 @@ fi
 
 if [[ "${DB_HOST}" == *tidbcloud.com* ]]; then
   export MYSQL_ATTR_SSL_VERIFY_SERVER_CERT="${MYSQL_ATTR_SSL_VERIFY_SERVER_CERT:-false}"
-  if [ -z "${MYSQL_ATTR_SSL_CA:-}" ]; then
-    for ca in /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt; do
-      if [ -f "$ca" ]; then
-        export MYSQL_ATTR_SSL_CA="$ca"
-        break
-      fi
-    done
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  bundled="${ROOT}/backend/storage/certs/isrgrootx1.pem"
+  if [ -z "${MYSQL_ATTR_SSL_CA:-}" ] || [ ! -r "${MYSQL_ATTR_SSL_CA}" ]; then
+    if [ -r "$bundled" ]; then
+      export MYSQL_ATTR_SSL_CA="$bundled"
+    fi
   fi
 fi

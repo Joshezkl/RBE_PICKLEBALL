@@ -3,6 +3,30 @@
 use Illuminate\Support\Str;
 
 /**
+ * @return non-empty-string|null
+ */
+if (! function_exists('tidbBundledCaPath')) {
+    function tidbBundledCaPath(): ?string
+    {
+        $candidates = [];
+
+        if (function_exists('base_path')) {
+            $candidates[] = base_path('storage/certs/isrgrootx1.pem');
+        }
+
+        $candidates[] = dirname(__DIR__).'/storage/certs/isrgrootx1.pem';
+
+        foreach ($candidates as $path) {
+            if (is_readable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+}
+
+/**
  * @return array<int, mixed>
  */
 if (! function_exists('mysqlSslOptions')) {
@@ -25,9 +49,13 @@ if (! function_exists('mysqlSslOptions')) {
         $isTidb = str_contains($host, 'tidbcloud.com');
 
         if ($isTidb) {
-            // TiDB requires TLS; Vercel serverless often lacks stable system CA bundles.
             $options[$sslVerifyAttr] = false;
+
             $ca = (string) env('MYSQL_ATTR_SSL_CA', '');
+            if ($ca === '' || ! is_readable($ca)) {
+                $ca = (string) (tidbBundledCaPath() ?? '');
+            }
+
             if ($ca !== '' && is_readable($ca)) {
                 $options[$sslCaAttr] = $ca;
             }

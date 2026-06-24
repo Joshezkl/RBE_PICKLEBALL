@@ -14,6 +14,17 @@ function rbe_sanitize_env_value(string $value): string
 }
 
 /**
+ * Bundled Let's Encrypt ISRG Root X1 CA used by TiDB Cloud Starter/Essential.
+ */
+function rbe_tidb_ca_path(?string $backendRoot = null): ?string
+{
+    $backendRoot ??= dirname(__DIR__).'/backend';
+    $path = $backendRoot.'/storage/certs/isrgrootx1.pem';
+
+    return is_readable($path) ? $path : null;
+}
+
+/**
  * @return array<string, string>
  */
 function rbe_vercel_env_map(): array
@@ -110,9 +121,21 @@ function rbe_vercel_env_map(): array
         $values['MYSQL_ATTR_SSL_VERIFY_SERVER_CERT'] = 'false';
     }
 
-    $ca = $values['MYSQL_ATTR_SSL_CA'] ?? '';
-    if ($ca !== '' && ! is_readable($ca)) {
-        unset($values['MYSQL_ATTR_SSL_CA']);
+    if (str_contains((string) ($values['DB_HOST'] ?? ''), 'tidbcloud.com')) {
+        $ca = $values['MYSQL_ATTR_SSL_CA'] ?? '';
+        if ($ca === '' || ! is_readable($ca)) {
+            $bundled = rbe_tidb_ca_path();
+            if ($bundled !== null) {
+                $values['MYSQL_ATTR_SSL_CA'] = $bundled;
+            } elseif ($ca !== '') {
+                unset($values['MYSQL_ATTR_SSL_CA']);
+            }
+        }
+    } else {
+        $ca = $values['MYSQL_ATTR_SSL_CA'] ?? '';
+        if ($ca !== '' && ! is_readable($ca)) {
+            unset($values['MYSQL_ATTR_SSL_CA']);
+        }
     }
 
     return $values;
@@ -131,14 +154,34 @@ function rbe_inject_env(array $values): void
 }
 
 /**
- * Drop SSL CA paths that are not readable in the current serverless instance.
+ * Ensure TiDB TLS uses a readable CA bundle on serverless runtimes.
  *
  * @param array<string, string> $values
  */
 function rbe_sanitize_runtime_ssl_env(array $values): void
 {
+    $host = (string) ($values['DB_HOST'] ?? '');
+    if (! str_contains($host, 'tidbcloud.com')) {
+        $ca = $values['MYSQL_ATTR_SSL_CA'] ?? '';
+        if ($ca !== '' && ! is_readable($ca)) {
+            putenv('MYSQL_ATTR_SSL_CA');
+            unset($_ENV['MYSQL_ATTR_SSL_CA'], $_SERVER['MYSQL_ATTR_SSL_CA']);
+        }
+
+        return;
+    }
+
     $ca = $values['MYSQL_ATTR_SSL_CA'] ?? '';
-    if ($ca === '' || is_readable($ca)) {
+    if ($ca !== '' && is_readable($ca)) {
+        return;
+    }
+
+    $bundled = rbe_tidb_ca_path();
+    if ($bundled !== null) {
+        putenv("MYSQL_ATTR_SSL_CA={$bundled}");
+        $_ENV['MYSQL_ATTR_SSL_CA'] = $bundled;
+        $_SERVER['MYSQL_ATTR_SSL_CA'] = $bundled;
+
         return;
     }
 
