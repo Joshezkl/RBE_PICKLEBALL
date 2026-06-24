@@ -41,6 +41,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 $hint = 'Vercel cannot resolve or reach the database host. Re-enter DB_HOST without spaces or https://, set DB_PORT=4000 for TiDB, and in TiDB Cloud enable a public endpoint with IP allowlist 0.0.0.0/0.';
             } elseif (str_contains($detail, 'Connection refused') || str_contains($detail, 'timed out')) {
                 $hint = 'Cannot reach the database host. Check DB_HOST, DB_PORT, and allow external connections from your MySQL provider.';
+            } elseif (str_contains($detail, 'Cannot connect to MySQL using SSL') || str_contains($detail, 'SSL connection')) {
+                $hint = 'TiDB SSL failed on Vercel. Set MYSQL_ATTR_SSL_VERIFY_SERVER_CERT=false in Vercel env vars, remove MYSQL_ATTR_SSL_CA unless you bundle a readable CA file, then redeploy.';
             } elseif (str_contains($detail, 'Data too long for column')) {
                 return response()->json([
                     'message' => 'Database schema is out of date. Redeploy so the latest migrations can widen tournament category keys.',

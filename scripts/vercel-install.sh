@@ -46,9 +46,9 @@ fi
 echo "==> Discovering Laravel packages"
 php artisan package:discover --ansi
 
-echo "==> Caching Laravel routes and config for faster cold starts"
+echo "==> Caching Laravel routes (config stays uncached for runtime DB/SSL env)"
 php artisan route:cache --no-ansi
-php artisan config:cache --no-ansi
+php artisan config:clear --no-ansi
 
 if [ -n "${APP_KEY:-}" ] \
   && [ -n "${DB_HOST:-}" ] \

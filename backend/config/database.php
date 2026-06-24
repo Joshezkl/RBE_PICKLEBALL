@@ -20,12 +20,29 @@ if (! function_exists('mysqlSslOptions')) {
             : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT;
 
         $options = [];
-        if (env('MYSQL_ATTR_SSL_CA')) {
-            $options[$sslCaAttr] = env('MYSQL_ATTR_SSL_CA');
-        }
-        if (str_contains((string) env('DB_HOST', ''), 'tidbcloud.com')
-            || filter_var(env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT', false), FILTER_VALIDATE_BOOLEAN)) {
+
+        $host = (string) env('DB_HOST', '');
+        $isTidb = str_contains($host, 'tidbcloud.com');
+
+        if ($isTidb) {
+            // TiDB requires TLS; Vercel serverless often lacks stable system CA bundles.
             $options[$sslVerifyAttr] = false;
+            $ca = (string) env('MYSQL_ATTR_SSL_CA', '');
+            if ($ca !== '' && is_readable($ca)) {
+                $options[$sslCaAttr] = $ca;
+            }
+
+            return $options;
+        }
+
+        if (env('MYSQL_ATTR_SSL_CA')) {
+            $ca = (string) env('MYSQL_ATTR_SSL_CA');
+            if (is_readable($ca)) {
+                $options[$sslCaAttr] = $ca;
+            }
+        }
+        if (filter_var(env('MYSQL_ATTR_SSL_VERIFY_SERVER_CERT', false), FILTER_VALIDATE_BOOLEAN)) {
+            $options[$sslVerifyAttr] = true;
         }
 
         return $options;

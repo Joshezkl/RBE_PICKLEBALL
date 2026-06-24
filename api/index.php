@@ -19,12 +19,19 @@ if (getenv('VERCEL') || getenv('VERCEL_ENV') || getenv('VERCEL_URL')) {
     }
     $_ENV['VIEW_COMPILED_PATH'] = "{$tmp}/views";
     $_SERVER['VIEW_COMPILED_PATH'] = "{$tmp}/views";
+
+    // Stale config cache breaks runtime DB/SSL env on serverless; route cache is safe to keep.
+    $configCache = $backendRoot.'/bootstrap/cache/config.php';
+    if (is_file($configCache)) {
+        @unlink($configCache);
+    }
 }
 
 $onVercel = (bool) (getenv('VERCEL') ?: getenv('VERCEL_ENV') ?: getenv('VERCEL_URL'));
 $envValues = rbe_vercel_env_map();
 if ($onVercel) {
     rbe_inject_env($envValues);
+    rbe_sanitize_runtime_ssl_env($envValues);
 }
 
 $envError = rbe_validate_mysql_env($onVercel, $envValues);

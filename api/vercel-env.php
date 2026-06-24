@@ -110,19 +110,9 @@ function rbe_vercel_env_map(): array
         $values['MYSQL_ATTR_SSL_VERIFY_SERVER_CERT'] = 'false';
     }
 
-    if (
-        str_contains((string) ($values['DB_HOST'] ?? ''), 'tidbcloud.com')
-        && ($values['MYSQL_ATTR_SSL_CA'] ?? '') === ''
-    ) {
-        foreach ([
-            '/etc/pki/tls/certs/ca-bundle.crt',
-            '/etc/ssl/certs/ca-certificates.crt',
-        ] as $caBundle) {
-            if (is_file($caBundle)) {
-                $values['MYSQL_ATTR_SSL_CA'] = $caBundle;
-                break;
-            }
-        }
+    $ca = $values['MYSQL_ATTR_SSL_CA'] ?? '';
+    if ($ca !== '' && ! is_readable($ca)) {
+        unset($values['MYSQL_ATTR_SSL_CA']);
     }
 
     return $values;
@@ -138,6 +128,22 @@ function rbe_inject_env(array $values): void
         $_ENV[$key] = $value;
         $_SERVER[$key] = $value;
     }
+}
+
+/**
+ * Drop SSL CA paths that are not readable in the current serverless instance.
+ *
+ * @param array<string, string> $values
+ */
+function rbe_sanitize_runtime_ssl_env(array $values): void
+{
+    $ca = $values['MYSQL_ATTR_SSL_CA'] ?? '';
+    if ($ca === '' || is_readable($ca)) {
+        return;
+    }
+
+    putenv('MYSQL_ATTR_SSL_CA');
+    unset($_ENV['MYSQL_ATTR_SSL_CA'], $_SERVER['MYSQL_ATTR_SSL_CA']);
 }
 
 /**
