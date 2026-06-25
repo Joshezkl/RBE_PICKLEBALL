@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\PlaySession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ChallengeCourtTest extends TestCase
@@ -474,6 +475,35 @@ class ChallengeCourtTest extends TestCase
         $this->assertGreaterThanOrEqual(
             1,
             collect($state['courts'])->where('status', 'in_match')->count()
+        );
+    }
+
+    public function test_live_state_does_not_scale_queries_with_eligible_player_count(): void
+    {
+        $session = $this->createSessionWithPlayers();
+
+        for ($i = 5; $i <= 24; $i++) {
+            $this->withHeader('X-Admin-Pin', self::PIN)
+                ->postJson("/api/sessions/{$session->id}/players", ['name' => "Player {$i}"])
+                ->assertCreated();
+        }
+
+        $this->withHeader('X-Admin-Pin', self::PIN)
+            ->postJson("/api/sessions/{$session->id}/challenge-court/open")
+            ->assertOk();
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $this->getJson("/api/sessions/{$session->id}/live")->assertOk();
+
+        $queryCount = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertLessThan(
+            20,
+            $queryCount,
+            "Expected bounded queries for /live, got {$queryCount}",
         );
     }
 

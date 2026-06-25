@@ -392,14 +392,19 @@ class ChallengeCourtService
             ->exists();
     }
 
-    public function courtState(PlaySession $session, Court $court): array
-    {
+    public function courtState(
+        PlaySession $session,
+        Court $court,
+        ?ChallengeCourtSnapshot $snapshot = null,
+    ): array {
         if (! $court->is_challenge_court) {
             return [];
         }
 
-        $defender = $this->defendingTeamOnCourt($session, $court);
-        $queuedCount = $this->queuedTeamCount($session);
+        $snapshot ??= ChallengeCourtSnapshot::load($session);
+
+        $defender = $snapshot->defendingTeamOnCourt($court);
+        $queuedCount = $snapshot->queuedTeamCount();
         $open = $this->isOpen($session);
         $available = $court->status === 'available';
 
@@ -417,38 +422,22 @@ class ChallengeCourtService
         ];
     }
 
-    public function buildState(PlaySession $session): array
+    public function buildState(PlaySession $session, ?ChallengeCourtSnapshot $snapshot = null): array
     {
-        $teams = ChallengeCourtTeam::query()
-            ->where('play_session_id', $session->id)
-            ->with(['player1', 'player2'])
-            ->orderBy('position')
-            ->get()
+        $snapshot ??= ChallengeCourtSnapshot::load($session);
+
+        $teams = $snapshot->teams()
             ->map(fn (ChallengeCourtTeam $team) => $this->formatTeam($team));
 
-        $eligible = Player::query()
-            ->where('play_session_id', $session->id)
-            ->where('is_active', true)
-            ->where('availability', 'active')
-            ->orderBy('name')
-            ->get()
-            ->filter(fn (Player $player) => ! $this->isPlayerInChallengeCourt($session, $player->id))
-            ->filter(fn (Player $player) => ! $this->isPlayerOnActiveCourt($session, $player->id))
-            ->values()
-            ->map(fn (Player $player) => [
-                'id' => $player->id,
-                'name' => $player->name,
-                'wins' => $player->wins,
-                'losses' => $player->losses,
-            ]);
+        $eligible = $snapshot->eligiblePlayers();
 
         $hasAssignableCourt = Court::query()
             ->where('play_session_id', $session->id)
             ->where('is_challenge_court', true)
             ->where('status', 'available')
             ->get()
-            ->contains(function (Court $court) use ($session) {
-                $extras = $this->courtState($session, $court);
+            ->contains(function (Court $court) use ($session, $snapshot) {
+                $extras = $this->courtState($session, $court, $snapshot);
 
                 return ($extras['canAssignInitial'] ?? false)
                     || ($extras['canNextChallenger'] ?? false);
@@ -458,7 +447,7 @@ class ChallengeCourtService
             'isOpen' => $this->isOpen($session),
             'courtNumbers' => $this->courtNumbers($session),
             'teams' => $teams->values()->all(),
-            'eligiblePlayers' => $eligible->values()->all(),
+            'eligiblePlayers' => $eligible,
             'canAssignNext' => $hasAssignableCourt,
         ];
     }

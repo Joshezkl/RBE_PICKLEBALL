@@ -65,9 +65,10 @@ class StateService
         $queues = $this->queueService->getQueues($session);
         $groupSize = $session->groupSize();
         $queueTypes = $this->matchModeService->queueTypesFor($session);
-        $challengeCourt = $this->challengeCourtService->buildState($session);
+        $challengeCourtSnapshot = ChallengeCourtSnapshot::load($session);
+        $challengeCourt = $this->challengeCourtService->buildState($session, $challengeCourtSnapshot);
 
-        $courtPayloads = $courts->map(function (Court $court) use ($session, $matchesById) {
+        $courtPayloads = $courts->map(function (Court $court) use ($session, $matchesById, $challengeCourtSnapshot) {
             $match = null;
             if ($court->current_match_id) {
                 $matchModel = $matchesById->get($court->current_match_id);
@@ -84,7 +85,7 @@ class StateService
                 'isChallengeCourt' => (bool) $court->is_challenge_court,
                 'currentMatchId' => $court->current_match_id,
                 'match' => $match,
-            ], $this->challengeCourtService->courtState($session, $court));
+            ], $this->challengeCourtService->courtState($session, $court, $challengeCourtSnapshot));
         });
 
         return [
