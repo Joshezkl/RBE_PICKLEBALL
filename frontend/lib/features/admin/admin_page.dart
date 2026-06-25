@@ -280,6 +280,24 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
+  Future<void> _moveQueuePlayer(
+    int playerId,
+    String queueType,
+    int position,
+  ) async {
+    final ok = await _controller.moveQueuePlayer(
+      playerId: playerId,
+      queueType: queueType,
+      position: position,
+    );
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_controller.error ?? 'Could not move player')),
+      );
+    }
+  }
+
   Future<void> _editCourtCount(SessionState state) async {
     final selected = await showEditCourtCountDialog(
       context,
@@ -1070,6 +1088,8 @@ class _AdminPageState extends State<AdminPage> {
             accentColor: MatchModes.accentForQueue(context, queueType),
             players: state.queues[queueType] ?? [],
             groupSize: state.groupSize,
+            queueType: queueType,
+            onMovePlayer: _moveQueuePlayer,
             nextUpPlayerIds: state.nextUpPlayerIds,
             onDeckPlayerIds: state.onDeckPlayerIds,
             isPriorityQueue: _isPriorityQueue(state, queueType),

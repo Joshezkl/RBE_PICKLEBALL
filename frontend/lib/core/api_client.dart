@@ -159,6 +159,27 @@ class ApiClient {
     return SessionState.fromJson(body['state'] as Map<String, dynamic>);
   }
 
+  Future<SessionState> moveQueuePlayer(
+    int sessionId, {
+    required int playerId,
+    required String queueType,
+    required int position,
+  }) async {
+    final response = await _client.patch(
+      Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/queues/move'),
+      headers: _headers,
+      body: jsonEncode({
+        'player_id': playerId,
+        'queue_type': queueType,
+        'position': position,
+      }),
+    );
+    _throwOnError(response);
+    return SessionState.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<SessionState> submitScore(
     int sessionId,
     int matchId,

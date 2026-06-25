@@ -191,6 +191,23 @@ class SessionController extends ChangeNotifier {
     return _mutate(() => api.updatePlayerName(sessionId, playerId, name));
   }
 
+  Future<bool> moveQueuePlayer({
+    required int playerId,
+    required String queueType,
+    required int position,
+  }) async {
+    final sessionId = state?.session.id;
+    if (sessionId == null) return false;
+    return _mutate(
+      () => api.moveQueuePlayer(
+        sessionId,
+        playerId: playerId,
+        queueType: queueType,
+        position: position,
+      ),
+    );
+  }
+
   Future<bool> submitScore(int matchId, int scoreA, int scoreB) async {
     final sessionId = state?.session.id;
     if (sessionId == null) return false;

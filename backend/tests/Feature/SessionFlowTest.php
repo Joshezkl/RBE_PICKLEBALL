@@ -385,6 +385,49 @@ class SessionFlowTest extends TestCase
         $this->assertSame($full['session']['id'], $live['session']['id']);
     }
 
+    public function test_move_queue_player_within_and_across_queues(): void
+    {
+        $session = $this->createSessionWithCourts(2);
+
+        foreach (['Josh', 'Mac', 'Jacko', 'Ben'] as $name) {
+            $this->withHeader('X-Admin-Pin', self::PIN)
+                ->postJson("/api/sessions/{$session->id}/players", ['name' => $name])
+                ->assertCreated();
+        }
+
+        $state = $this->getJson("/api/sessions/{$session->id}/state")->json();
+        $joshId = collect($state['queues']['winner'])->firstWhere('name', 'Josh')['id'];
+
+        $this->withHeader('X-Admin-Pin', self::PIN)
+            ->patchJson("/api/sessions/{$session->id}/queues/move", [
+                'player_id' => $joshId,
+                'queue_type' => 'winner',
+                'position' => 2,
+            ])
+            ->assertOk();
+
+        $afterReorder = $this->getJson("/api/sessions/{$session->id}/state")->json();
+        $this->assertEquals(
+            ['Mac', 'Josh'],
+            collect($afterReorder['queues']['winner'])->pluck('name')->all(),
+        );
+
+        $this->withHeader('X-Admin-Pin', self::PIN)
+            ->patchJson("/api/sessions/{$session->id}/queues/move", [
+                'player_id' => $joshId,
+                'queue_type' => 'loser',
+                'position' => 1,
+            ])
+            ->assertOk();
+
+        $afterMove = $this->getJson("/api/sessions/{$session->id}/state")->json();
+        $this->assertEquals(['Mac'], collect($afterMove['queues']['winner'])->pluck('name')->all());
+        $this->assertEquals(
+            ['Josh', 'Jacko', 'Ben'],
+            collect($afterMove['queues']['loser'])->pluck('name')->all(),
+        );
+    }
+
     private function createSessionWithCourts(int $courtCount, bool $autoAssign = false): PlaySession
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)

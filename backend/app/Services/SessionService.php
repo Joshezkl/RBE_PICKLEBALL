@@ -307,6 +307,28 @@ class SessionService
         $player->delete();
     }
 
+    public function moveQueuePlayer(
+        PlaySession $session,
+        Player $player,
+        string $queueType,
+        int $position,
+    ): void {
+        if (! $session->isActive()) {
+            throw new \RuntimeException('Session is not active');
+        }
+
+        if ($player->play_session_id !== $session->id) {
+            throw new \InvalidArgumentException('Player not in this session');
+        }
+
+        $validTypes = $this->matchModeService->queueTypesFor($session);
+        if (! in_array($queueType, $validTypes, true)) {
+            throw new \InvalidArgumentException('Invalid queue type');
+        }
+
+        $this->queueService->movePlayer($session, $player, $queueType, $position);
+    }
+
     private function reactivatePlayer(
         PlaySession $session,
         Player $player,

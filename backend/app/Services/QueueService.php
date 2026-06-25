@@ -166,6 +166,84 @@ class QueueService
         }
     }
 
+    public function movePlayer(
+        PlaySession $session,
+        Player $player,
+        string $targetQueueType,
+        int $targetPosition,
+    ): void {
+        $entry = QueueEntry::query()
+            ->where('play_session_id', $session->id)
+            ->where('player_id', $player->id)
+            ->first();
+
+        if (! $entry) {
+            throw new \InvalidArgumentException('Player is not in a queue');
+        }
+
+        $sourceQueueType = $entry->queue_type;
+        $sourcePosition = $entry->position;
+        $targetPosition = max(1, $targetPosition);
+
+        if ($sourceQueueType === $targetQueueType) {
+            $queueCount = QueueEntry::query()
+                ->where('play_session_id', $session->id)
+                ->where('queue_type', $targetQueueType)
+                ->count();
+
+            $targetPosition = min($targetPosition, $queueCount);
+
+            if ($sourcePosition === $targetPosition) {
+                return;
+            }
+
+            if ($sourcePosition < $targetPosition) {
+                QueueEntry::query()
+                    ->where('play_session_id', $session->id)
+                    ->where('queue_type', $targetQueueType)
+                    ->whereBetween('position', [$sourcePosition + 1, $targetPosition])
+                    ->decrement('position');
+            } else {
+                QueueEntry::query()
+                    ->where('play_session_id', $session->id)
+                    ->where('queue_type', $targetQueueType)
+                    ->whereBetween('position', [$targetPosition, $sourcePosition - 1])
+                    ->increment('position');
+            }
+
+            $entry->update(['position' => $targetPosition]);
+
+            return;
+        }
+
+        $entry->delete();
+        $this->reindexQueue($session, $sourceQueueType);
+
+        $targetCount = QueueEntry::query()
+            ->where('play_session_id', $session->id)
+            ->where('queue_type', $targetQueueType)
+            ->count();
+
+        $targetPosition = min($targetPosition, $targetCount + 1);
+
+        QueueEntry::query()
+            ->where('play_session_id', $session->id)
+            ->where('queue_type', $targetQueueType)
+            ->where('position', '>=', $targetPosition)
+            ->orderByDesc('position')
+            ->get()
+            ->each(function (QueueEntry $queuedEntry) {
+                $queuedEntry->update(['position' => $queuedEntry->position + 1]);
+            });
+
+        QueueEntry::query()->create([
+            'play_session_id' => $session->id,
+            'player_id' => $player->id,
+            'queue_type' => $targetQueueType,
+            'position' => $targetPosition,
+        ]);
+    }
+
     public function getQueues(PlaySession $session): array
     {
         $types = $this->matchModeService->queueTypesFor($session);
