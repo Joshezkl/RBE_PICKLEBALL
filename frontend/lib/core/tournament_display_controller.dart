@@ -23,8 +23,8 @@ class TournamentDisplayController extends ChangeNotifier {
   Future<void> initialize() async {
     await refresh();
     _pollTimer = AdaptivePollTimer(
-      foregroundInterval: const Duration(seconds: 5),
-      backgroundInterval: const Duration(seconds: 15),
+      foregroundInterval: const Duration(seconds: 8),
+      backgroundInterval: const Duration(seconds: 20),
       onPoll: refresh,
     )..start();
   }

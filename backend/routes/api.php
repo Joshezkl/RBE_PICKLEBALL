@@ -48,6 +48,7 @@ Route::get('/health/db', function () {
 });
 
 Route::get('/sessions/active', [SessionController::class, 'active']);
+Route::get('/sessions/{session}/live', [SessionController::class, 'live']);
 Route::get('/sessions/{session}/state', [SessionController::class, 'state']);
 
 Route::get('/leaderboard/all-time', [LeaderboardController::class, 'allTime']);

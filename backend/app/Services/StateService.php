@@ -20,6 +20,34 @@ class StateService
 
     public function build(PlaySession $session): array
     {
+        $history = $this->loadMatchHistory($session, 20);
+
+        return array_merge($this->buildLiveCore($session), [
+            'matchHistory' => $history,
+            'finishedMatchCount' => $this->finishedMatchCount($session),
+            'pendingPayments' => $this->paymentService->pendingForSession($session),
+        ]);
+    }
+
+    /**
+     * Lightweight state for polling — skips heavy history and payment queries.
+     */
+    public function buildLive(PlaySession $session): array
+    {
+        $latest = $this->loadMatchHistory($session, 1);
+
+        return array_merge($this->buildLiveCore($session), [
+            'matchHistory' => $latest,
+            'finishedMatchCount' => $this->finishedMatchCount($session),
+            'pendingPayments' => [],
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildLiveCore(PlaySession $session): array
+    {
         $matchRelations = [
             'teamAPlayer1',
             'teamAPlayer2',
@@ -59,18 +87,6 @@ class StateService
             ], $this->challengeCourtService->courtState($session, $court));
         });
 
-        $history = MatchGame::query()
-            ->where('play_session_id', $session->id)
-            ->where('status', 'finished')
-            ->with([...$matchRelations, 'court'])
-            ->orderByDesc('finished_at')
-            ->limit(20)
-            ->get()
-            ->map(fn (MatchGame $m) => array_merge(
-                $this->matchService->formatMatch($m),
-                ['courtNumber' => $m->court?->court_number]
-            ));
-
         return [
             'session' => [
                 'id' => $session->id,
@@ -93,10 +109,41 @@ class StateService
             'queues' => $queues,
             'courts' => $courtPayloads,
             'upNext' => $this->buildUpNext($session, $queues, $groupSize),
-            'matchHistory' => $history,
-            'pendingPayments' => $this->paymentService->pendingForSession($session),
             'challengeCourt' => $challengeCourt,
         ];
+    }
+
+    private function finishedMatchCount(PlaySession $session): int
+    {
+        return MatchGame::query()
+            ->where('play_session_id', $session->id)
+            ->where('status', 'finished')
+            ->count();
+    }
+
+    /**
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function loadMatchHistory(PlaySession $session, int $limit): Collection
+    {
+        $matchRelations = [
+            'teamAPlayer1',
+            'teamAPlayer2',
+            'teamBPlayer1',
+            'teamBPlayer2',
+        ];
+
+        return MatchGame::query()
+            ->where('play_session_id', $session->id)
+            ->where('status', 'finished')
+            ->with([...$matchRelations, 'court'])
+            ->orderByDesc('finished_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (MatchGame $m) => array_merge(
+                $this->matchService->formatMatch($m),
+                ['courtNumber' => $m->court?->court_number]
+            ));
     }
 
     /**

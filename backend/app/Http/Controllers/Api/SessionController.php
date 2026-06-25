@@ -58,6 +58,11 @@ class SessionController extends Controller
         return response()->json($this->stateService->build($session));
     }
 
+    public function live(PlaySession $session): JsonResponse
+    {
+        return response()->json($this->stateService->buildLive($session));
+    }
+
     public function end(PlaySession $session): JsonResponse
     {
         $report = $this->sessionService->end($session);

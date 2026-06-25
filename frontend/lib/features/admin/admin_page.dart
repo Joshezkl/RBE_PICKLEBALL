@@ -416,7 +416,7 @@ class _AdminPageState extends State<AdminPage> {
                           title: 'Match History',
                           subtitle: state.matchHistory.isEmpty
                               ? 'Recently completed matches'
-                              : '${state.matchHistory.length} completed',
+                              : '${state.completedMatchCount} completed',
                           initiallyExpanded: false,
                           child: MatchHistoryGrid(matches: state.matchHistory),
                         ),
@@ -446,7 +446,7 @@ class _AdminPageState extends State<AdminPage> {
               const SizedBox(height: RpcSpacing.lg),
               CollapsibleSection(
                 title: 'Match History',
-                subtitle: '${state.matchHistory.length} completed',
+                subtitle: '${state.completedMatchCount} completed',
                 initiallyExpanded: false,
                 child: MatchHistoryGrid(matches: state.matchHistory),
               ),
@@ -972,7 +972,7 @@ class _AdminPageState extends State<AdminPage> {
     final playingCount = sessionPlayingPlayerCount(state);
     final waitingCount = sessionWaitingPlayerCount(state);
     final checkedInCount = state.rosterPlayerNames.length;
-    final matchesDone = state.matchHistory.length;
+    final matchesDone = state.completedMatchCount;
 
     return Row(
       children: [

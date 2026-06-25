@@ -120,7 +120,7 @@ class DisplayCueController extends ChangeNotifier {
       return;
     }
     final sessionId = current.session.id;
-    final matchCount = current.matchHistory.length;
+    final matchCount = current.completedMatchCount;
     if (_leaderboardSessionId == sessionId &&
         _leaderboardMatchCount == matchCount &&
         _leaderboard.isNotEmpty) {

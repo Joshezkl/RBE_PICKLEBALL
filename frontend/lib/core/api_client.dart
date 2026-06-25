@@ -64,6 +64,17 @@ class ApiClient {
     );
   }
 
+  Future<SessionState> getSessionStateLive(int sessionId) async {
+    final response = await _client.get(
+      Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/live'),
+      headers: _headers,
+    );
+    _throwOnError(response);
+    return SessionState.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<SessionState> startSession({
     String name = 'Open Play Session',
     String matchMode = 'auto_balanced',

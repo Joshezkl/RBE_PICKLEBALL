@@ -205,7 +205,7 @@ class _DisplayBody extends StatelessWidget {
 
     final checkedInCount = state.rosterPlayerNames.length;
 
-    final matchesDone = state.matchHistory.length;
+    final matchesDone = state.completedMatchCount;
 
     final courts = [...state.courts]
 

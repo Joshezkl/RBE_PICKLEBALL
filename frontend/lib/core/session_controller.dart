@@ -25,6 +25,8 @@ class SessionController extends ChangeNotifier {
   String? adminPin;
 
   AdaptivePollTimer? _pollTimer;
+  bool _readOnlyPolling = false;
+  int _adminFullRefreshPolls = 0;
 
   bool get hasActiveSession => state?.session.isActive ?? false;
 
@@ -66,14 +68,15 @@ class SessionController extends ChangeNotifier {
     _pollTimer?.stop();
     if (state == null) return;
 
+    _readOnlyPolling = readOnly;
+    _adminFullRefreshPolls = 0;
     final sessionId = state!.session.id;
 
     _pollTimer = AdaptivePollTimer(
-      onPoll: () async {
-        final fresh = await api.getSessionState(sessionId);
-        state = fresh;
-        notifyListeners();
-      },
+      foregroundInterval: const Duration(seconds: 8),
+      backgroundInterval: const Duration(seconds: 20),
+      liveInterval: const Duration(seconds: 30),
+      onPoll: () => _pollSessionState(sessionId),
     )..start();
 
     _pollTimer?.setLiveUpdatesActive(liveUpdates.isConnected);
@@ -88,6 +91,33 @@ class SessionController extends ChangeNotifier {
         _pollTimer?.setLiveUpdatesActive(connected);
       },
     );
+  }
+
+  Future<void> _pollSessionState(int sessionId) async {
+    final previous = state;
+    if (previous == null) return;
+
+    if (!_readOnlyPolling) {
+      _adminFullRefreshPolls++;
+    }
+
+    final live = await api.getSessionStateLive(sessionId);
+
+    if (!_readOnlyPolling) {
+      final needsFullRefresh =
+          live.completedMatchCount != previous.completedMatchCount ||
+              _adminFullRefreshPolls % 6 == 0;
+      if (needsFullRefresh) {
+        state = await api.getSessionState(sessionId);
+        notifyListeners();
+        return;
+      }
+      state = previous.mergeLivePoll(live, retainAdminExtras: true);
+    } else {
+      state = live;
+    }
+
+    notifyListeners();
   }
 
   Future<void> startSession({

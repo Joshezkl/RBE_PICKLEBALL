@@ -145,7 +145,7 @@ Admin PIN header: `X-Admin-Pin`
 
 ## Real-time Updates
 
-- **Polling:** Flutter polls session state every 3 seconds (always active).
+- **Polling:** Flutter polls lightweight session state every 8 seconds (full state on load and after admin actions).
 - **WebSocket (optional):** Install Laravel Reverb for instant updates.
 
 ```bash
@@ -292,6 +292,15 @@ bash scripts/vercel-build.sh
 - [ ] `/api/health` returns OK on your Vercel URL
 - [ ] Admin, board, check-in QR, and tournament flows tested
 - [ ] `APP_DEBUG=false`
+- [ ] **Database region matches Vercel** (e.g. both US-East) — cross-region DB adds 100–300ms+ per API call
+
+### Performance (deployed vs localhost)
+
+The app polls `/api/sessions/{id}/live` every ~8 seconds for live updates (lighter than full `/state`). Admin refreshes full state periodically and when matches complete. For best responsiveness on Vercel:
+
+1. Co-locate MySQL/TiDB with your Vercel deployment region.
+2. Use `/api/health/db` to confirm DB connectivity; check browser Network tab TTFB on `/live` if it still feels slow.
+3. For always-on performance (no serverless cold starts), host the Laravel API on a VPS and keep Flutter on Vercel (see VPS section below).
 
 ### Local development
 

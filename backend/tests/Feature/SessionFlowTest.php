@@ -364,6 +364,27 @@ class SessionFlowTest extends TestCase
         );
     }
 
+    public function test_live_state_endpoint_omits_heavy_fields_but_keeps_live_data(): void
+    {
+        $session = $this->createSessionWithCourts(2);
+
+        foreach (['P1', 'P2', 'P3', 'P4'] as $name) {
+            $this->withHeader('X-Admin-Pin', self::PIN)
+                ->postJson("/api/sessions/{$session->id}/players", ['name' => $name])
+                ->assertCreated();
+        }
+
+        $full = $this->getJson("/api/sessions/{$session->id}/state")->assertOk()->json();
+        $live = $this->getJson("/api/sessions/{$session->id}/live")->assertOk()->json();
+
+        $this->assertArrayHasKey('queues', $live);
+        $this->assertArrayHasKey('courts', $live);
+        $this->assertArrayHasKey('finishedMatchCount', $live);
+        $this->assertSame([], $live['pendingPayments']);
+        $this->assertSame($full['queues']['winner'], $live['queues']['winner']);
+        $this->assertSame($full['session']['id'], $live['session']['id']);
+    }
+
     private function createSessionWithCourts(int $courtCount, bool $autoAssign = false): PlaySession
     {
         $response = $this->withHeader('X-Admin-Pin', self::PIN)

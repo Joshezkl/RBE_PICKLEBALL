@@ -410,6 +410,7 @@ class SessionState {
     required this.courts,
     required this.upNext,
     required this.matchHistory,
+    this.finishedMatchCount,
     this.pendingPayments = const [],
     this.challengeCourt = ChallengeCourtState.empty,
   });
@@ -419,8 +420,12 @@ class SessionState {
   final List<CourtInfo> courts;
   final List<UpNextGroup> upNext;
   final List<MatchInfo> matchHistory;
+  final int? finishedMatchCount;
   final List<PendingPayment> pendingPayments;
   final ChallengeCourtState challengeCourt;
+
+  int get completedMatchCount =>
+      finishedMatchCount ?? matchHistory.length;
 
   factory SessionState.fromJson(Map<String, dynamic> json) {
     final queuesJson = json['queues'] as Map<String, dynamic>? ?? {};
@@ -443,6 +448,7 @@ class SessionState {
       matchHistory: (json['matchHistory'] as List<dynamic>? ?? [])
           .map((e) => MatchInfo.fromJson(e as Map<String, dynamic>))
           .toList(),
+      finishedMatchCount: (json['finishedMatchCount'] as num?)?.toInt(),
       pendingPayments: (json['pendingPayments'] as List<dynamic>? ?? [])
           .map((e) => PendingPayment.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -451,6 +457,27 @@ class SessionState {
               json['challengeCourt'] as Map<String, dynamic>,
             )
           : ChallengeCourtState.empty,
+    );
+  }
+
+  /// Merges a lightweight poll response into existing state.
+  SessionState mergeLivePoll(SessionState live, {required bool retainAdminExtras}) {
+    if (!retainAdminExtras) {
+      return live;
+    }
+
+    final historyUnchanged =
+        live.completedMatchCount == completedMatchCount;
+
+    return SessionState(
+      session: live.session,
+      queues: live.queues,
+      courts: live.courts,
+      upNext: live.upNext,
+      matchHistory: historyUnchanged ? matchHistory : live.matchHistory,
+      finishedMatchCount: live.finishedMatchCount,
+      pendingPayments: pendingPayments,
+      challengeCourt: live.challengeCourt,
     );
   }
 

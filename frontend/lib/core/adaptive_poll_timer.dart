@@ -6,9 +6,9 @@ import 'page_visibility.dart';
 class AdaptivePollTimer {
   AdaptivePollTimer({
     required Future<void> Function() onPoll,
-    this.foregroundInterval = const Duration(seconds: 5),
-    this.backgroundInterval = const Duration(seconds: 15),
-    this.liveInterval = const Duration(seconds: 20),
+    this.foregroundInterval = const Duration(seconds: 8),
+    this.backgroundInterval = const Duration(seconds: 20),
+    this.liveInterval = const Duration(seconds: 30),
   }) : _onPoll = onPoll;
 
   final Duration foregroundInterval;
