@@ -285,6 +285,14 @@ class SessionController extends ChangeNotifier {
     );
   }
 
+  Future<bool> swapCourtPlayers(int courtId, int playerAId, int playerBId) async {
+    final sessionId = state?.session.id;
+    if (sessionId == null) return false;
+    return _mutate(
+      () => api.swapCourtPlayers(sessionId, courtId, playerAId, playerBId),
+    );
+  }
+
   Future<bool> setAutoAssignEnabled(bool enabled) async {
     final sessionId = state?.session.id;
     if (sessionId == null) return false;

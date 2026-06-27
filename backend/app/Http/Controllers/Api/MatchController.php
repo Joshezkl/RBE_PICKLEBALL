@@ -109,4 +109,29 @@ class MatchController extends Controller
 
         return response()->json($this->broadcastState($session->fresh()));
     }
+
+    public function swapPlayers(Request $request, PlaySession $session, Court $court): JsonResponse
+    {
+        if ($court->play_session_id !== $session->id) {
+            return response()->json(['message' => 'Court not in this session'], 404);
+        }
+
+        $validated = $request->validate([
+            'player_a_id' => 'required|integer',
+            'player_b_id' => 'required|integer|different:player_a_id',
+        ]);
+
+        try {
+            $this->courtService->swapMatchPlayers(
+                $session,
+                $court,
+                $validated['player_a_id'],
+                $validated['player_b_id'],
+            );
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($this->broadcastState($session->fresh()));
+    }
 }

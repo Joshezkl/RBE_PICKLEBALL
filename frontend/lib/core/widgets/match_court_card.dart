@@ -21,6 +21,7 @@ class MatchCourtCard extends StatelessWidget {
     this.onManualAssign,
     this.onAssignNext,
     this.onRemovePlayer,
+    this.onSwapPlayers,
   });
 
   final CourtInfo court;
@@ -32,6 +33,8 @@ class MatchCourtCard extends StatelessWidget {
   final void Function(CourtInfo court)? onManualAssign;
   final void Function(CourtInfo court)? onAssignNext;
   final void Function(CourtInfo court, int playerId)? onRemovePlayer;
+  final void Function(CourtInfo court, int draggedPlayerId, int targetPlayerId)?
+      onSwapPlayers;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +78,12 @@ class MatchCourtCard extends StatelessWidget {
                         match.status == 'in_match' &&
                         onRemovePlayer != null
                     ? (playerId) => onRemovePlayer!(court, playerId)
+                    : null,
+                onSwapPlayers: match != null &&
+                        match.status == 'in_match' &&
+                        onSwapPlayers != null
+                    ? (draggedId, targetId) =>
+                        onSwapPlayers!(court, draggedId, targetId)
                     : null,
               ),
             if (match != null && match.scoreA != null && match.scoreB != null) ...[

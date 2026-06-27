@@ -6,6 +6,7 @@ import '../../core/theme/rpc_palette.dart';
 import '../../core/theme/rpc_typography.dart';
 import '../../core/widgets/next_up_badge.dart';
 import '../../core/widgets/rpc_responsive.dart';
+import '../../core/widgets/wait_time_indicator.dart';
 
 class ManualAssignDialog extends StatefulWidget {
   const ManualAssignDialog({
@@ -253,10 +254,21 @@ class _QueueSection extends StatelessWidget {
                       const NextUpBadge(style: NextUpBadgeStyle.onDeck),
                   ],
                 ),
-                subtitle: Text(
-                  '${player.wins}W · ${player.losses}L',
-                  style: RpcTypography.bodySmallMuted(context),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${player.wins}W · ${player.losses}L',
+                      style: RpcTypography.bodySmallMuted(context),
+                    ),
+                    if (player.joinedAt != null) ...[
+                      const SizedBox(height: 2),
+                      WaitTimeIndicator(since: player.joinedAt, compact: true),
+                    ],
+                  ],
                 ),
+                isThreeLine: player.joinedAt != null,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                   side: BorderSide(

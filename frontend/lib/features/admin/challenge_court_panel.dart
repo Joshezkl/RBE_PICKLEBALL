@@ -183,45 +183,31 @@ class _CourtConfigRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final options = <List<int>>[
-      [1],
-      if (courtCount >= 2) [2],
-      if (courtCount >= 3) [1, 2],
-      if (courtCount >= 4) [3, 4],
-    ];
+    if (courtCount < 1) {
+      return const SizedBox.shrink();
+    }
 
     return Wrap(
       spacing: 6,
       runSpacing: 6,
-      children: options.map((numbers) {
-        final label = numbers.length == 1
-            ? 'Court ${numbers.first}'
-            : 'Courts ${numbers.join(' & ')}';
-        final isSelected = _sameSelection(numbers, selected);
-
-        return FilterChip(
-          label: Text(label),
-          selected: isSelected,
-          onSelected: (selected) {
-            if (selected) {
-              onChanged(numbers);
-            } else if (isSelected) {
-              onChanged([]);
-            }
-          },
-        );
-      }).toList(),
+      children: [
+        for (var number = 1; number <= courtCount; number++)
+          FilterChip(
+            label: Text('Court $number'),
+            selected: selected.contains(number),
+            onSelected: (isSelected) {
+              final next = [...selected];
+              if (isSelected) {
+                if (!next.contains(number)) next.add(number);
+              } else {
+                next.remove(number);
+              }
+              next.sort();
+              onChanged(next);
+            },
+          ),
+      ],
     );
-  }
-
-  bool _sameSelection(List<int> a, List<int> b) {
-    if (a.length != b.length) return false;
-    final sortedA = [...a]..sort();
-    final sortedB = [...b]..sort();
-    for (var i = 0; i < sortedA.length; i++) {
-      if (sortedA[i] != sortedB[i]) return false;
-    }
-    return true;
   }
 }
 

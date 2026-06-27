@@ -77,6 +77,29 @@ if (! function_exists('mysqlSslOptions')) {
     }
 }
 
+/**
+ * Connection-level PDO options (SSL + optional persistent connections).
+ *
+ * Establishing a TLS connection to a remote MySQL/TiDB host costs ~300-500ms
+ * per request. Enabling DB_PERSISTENT lets the driver reuse an existing
+ * connection on warm serverless instances and always-on hosts, removing that
+ * handshake from the critical path on the vast majority of requests.
+ *
+ * @return array<int, mixed>
+ */
+if (! function_exists('mysqlConnectionOptions')) {
+    function mysqlConnectionOptions(): array
+    {
+        $options = mysqlSslOptions();
+
+        if (filter_var(env('DB_PERSISTENT', false), FILTER_VALIDATE_BOOLEAN)) {
+            $options[PDO::ATTR_PERSISTENT] = true;
+        }
+
+        return $options;
+    }
+}
+
 return [
 
     /*
@@ -133,7 +156,7 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => mysqlSslOptions(),
+            'options' => mysqlConnectionOptions(),
         ],
 
         'mariadb' => [
@@ -151,7 +174,7 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => mysqlSslOptions(),
+            'options' => mysqlConnectionOptions(),
         ],
 
         'pgsql' => [

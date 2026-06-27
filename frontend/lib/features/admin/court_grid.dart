@@ -14,6 +14,7 @@ class CourtGrid extends StatelessWidget {
     required this.onAssignNext,
     this.challengeCourtIsOpen = true,
     this.onRemovePlayer,
+    this.onSwapPlayers,
     this.dense = false,
   });
 
@@ -26,6 +27,8 @@ class CourtGrid extends StatelessWidget {
   final void Function(CourtInfo court) onManualAssign;
   final void Function(CourtInfo court) onAssignNext;
   final void Function(CourtInfo court, int playerId)? onRemovePlayer;
+  final void Function(CourtInfo court, int draggedPlayerId, int targetPlayerId)?
+      onSwapPlayers;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +42,7 @@ class CourtGrid extends StatelessWidget {
       onManualAssign: onManualAssign,
       onAssignNext: onAssignNext,
       onRemovePlayer: onRemovePlayer,
+      onSwapPlayers: onSwapPlayers,
     );
   }
 }

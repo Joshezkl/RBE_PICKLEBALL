@@ -6,6 +6,7 @@ use App\Models\PlaySession;
 use App\Models\Player;
 use App\Models\QueueEntry;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class QueueService
 {
@@ -32,14 +33,13 @@ class QueueService
 
     public function enqueueAtFront(PlaySession $session, Player $player, string $queueType): void
     {
+        // Shift the whole queue up by one in a single statement, then seat the
+        // player at the front (positions need not be gap-free; they are only
+        // used for ordering).
         QueueEntry::query()
             ->where('play_session_id', $session->id)
             ->where('queue_type', $queueType)
-            ->orderBy('position')
-            ->get()
-            ->each(function (QueueEntry $entry, int $index) {
-                $entry->update(['position' => $index + 2]);
-            });
+            ->increment('position');
 
         QueueEntry::query()->updateOrCreate(
             ['play_session_id' => $session->id, 'player_id' => $player->id],
@@ -64,11 +64,7 @@ class QueueService
             ->where('play_session_id', $session->id)
             ->where('queue_type', $queueType)
             ->where('position', '>=', $position)
-            ->orderByDesc('position')
-            ->get()
-            ->each(function (QueueEntry $entry) {
-                $entry->update(['position' => $entry->position + 1]);
-            });
+            ->increment('position');
 
         QueueEntry::query()->updateOrCreate(
             ['play_session_id' => $session->id, 'player_id' => $player->id],
@@ -100,12 +96,11 @@ class QueueService
         $entries = QueueEntry::query()
             ->where('play_session_id', $session->id)
             ->where('queue_type', $queueType)
+            ->whereHas('player', fn ($q) => $q->where('availability', 'active'))
             ->orderBy('position')
             ->with(['player.clubPlayer'])
-            ->limit($count * 3)
-            ->get()
-            ->filter(fn (QueueEntry $entry) => $entry->player->availability === 'active')
-            ->take($count);
+            ->limit($count)
+            ->get();
 
         if ($entries->count() < $count) {
             return collect();
@@ -131,11 +126,11 @@ class QueueService
         $entries = QueueEntry::query()
             ->where('play_session_id', $session->id)
             ->where('queue_type', $queueType)
+            ->whereHas('player', fn ($q) => $q->where('availability', 'active'))
             ->orderBy('position')
             ->with(['player.clubPlayer'])
-            ->get()
-            ->filter(fn (QueueEntry $entry) => $entry->player->availability === 'active')
-            ->take($count);
+            ->limit($count)
+            ->get();
 
         if ($entries->count() < $count) {
             return collect();
@@ -230,11 +225,7 @@ class QueueService
             ->where('play_session_id', $session->id)
             ->where('queue_type', $targetQueueType)
             ->where('position', '>=', $targetPosition)
-            ->orderByDesc('position')
-            ->get()
-            ->each(function (QueueEntry $queuedEntry) {
-                $queuedEntry->update(['position' => $queuedEntry->position + 1]);
-            });
+            ->increment('position');
 
         QueueEntry::query()->create([
             'play_session_id' => $session->id,
@@ -267,6 +258,7 @@ class QueueService
                 'wins' => $entry->player->wins,
                 'losses' => $entry->player->losses,
                 'position' => $entry->position,
+                'joinedAt' => $entry->created_at?->toIso8601String(),
                 'skillLevel' => $entry->player->skill_level,
                 'gender' => $entry->player->gender,
                 'availability' => $entry->player->availability,
@@ -279,14 +271,25 @@ class QueueService
 
     private function reindexQueue(PlaySession $session, string $queueType): void
     {
-        $entries = QueueEntry::query()
+        $ids = QueueEntry::query()
             ->where('play_session_id', $session->id)
             ->where('queue_type', $queueType)
             ->orderBy('position')
-            ->get();
+            ->pluck('id');
 
-        foreach ($entries as $index => $entry) {
-            $entry->update(['position' => $index + 1]);
+        if ($ids->isEmpty()) {
+            return;
         }
+
+        // Collapse the per-row update loop into a single CASE statement so
+        // re-indexing costs one round trip instead of one per queue entry.
+        $cases = '';
+        foreach ($ids as $index => $id) {
+            $cases .= 'WHEN '.(int) $id.' THEN '.($index + 1).' ';
+        }
+
+        QueueEntry::query()
+            ->whereIn('id', $ids->all())
+            ->update(['position' => DB::raw("CASE id {$cases}END")]);
     }
 }

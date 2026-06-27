@@ -13,6 +13,7 @@ class CourtMatchLayout extends StatelessWidget {
     this.dense = false,
     this.showTeamLabels = true,
     this.onRemovePlayer,
+    this.onSwapPlayers,
   });
 
   final MatchInfo? match;
@@ -20,6 +21,10 @@ class CourtMatchLayout extends StatelessWidget {
   final bool dense;
   final bool showTeamLabels;
   final void Function(int playerId)? onRemovePlayer;
+
+  /// Called when one player avatar is dragged onto another to swap their
+  /// positions. Receives the dragged player's id and the target player's id.
+  final void Function(int draggedPlayerId, int targetPlayerId)? onSwapPlayers;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +48,7 @@ class CourtMatchLayout extends StatelessWidget {
               dense: dense,
               showTeamLabel: showTeamLabels,
               onRemovePlayer: onRemovePlayer,
+              onSwapPlayers: onSwapPlayers,
             ),
           ),
           _VsBadge(dense: dense, avatarSize: avatarSize),
@@ -56,6 +62,7 @@ class CourtMatchLayout extends StatelessWidget {
               dense: dense,
               showTeamLabel: showTeamLabels,
               onRemovePlayer: onRemovePlayer,
+              onSwapPlayers: onSwapPlayers,
             ),
           ),
         ],
@@ -138,6 +145,7 @@ class _TeamColumn extends StatelessWidget {
     this.dense = false,
     this.showTeamLabel = true,
     this.onRemovePlayer,
+    this.onSwapPlayers,
   });
 
   final String label;
@@ -148,6 +156,7 @@ class _TeamColumn extends StatelessWidget {
   final bool dense;
   final bool showTeamLabel;
   final void Function(int playerId)? onRemovePlayer;
+  final void Function(int draggedPlayerId, int targetPlayerId)? onSwapPlayers;
 
   @override
   Widget build(BuildContext context) {
@@ -159,20 +168,110 @@ class _TeamColumn extends StatelessWidget {
           SizedBox(height: dense ? slotGap : slotGap + 2),
         ],
         ...List.generate(players.length, (i) {
+          final player = players[i];
+          final slot = PlayerSlot(
+            player: player,
+            label: slotLabels[i],
+            size: avatarSize,
+            dense: dense,
+            onRemove: player != null && onRemovePlayer != null
+                ? () => onRemovePlayer!(player.id)
+                : null,
+          );
+
           return Padding(
-            padding: EdgeInsets.only(bottom: i < players.length - 1 ? slotGap : 0),
-            child: PlayerSlot(
-              player: players[i],
-              label: slotLabels[i],
-              size: avatarSize,
-              dense: dense,
-              onRemove: players[i] != null && onRemovePlayer != null
-                  ? () => onRemovePlayer!(players[i]!.id)
-                  : null,
-            ),
+            padding:
+                EdgeInsets.only(bottom: i < players.length - 1 ? slotGap : 0),
+            child: onSwapPlayers != null && player != null
+                ? _SwappableSlot(
+                    player: player,
+                    size: avatarSize,
+                    onSwapPlayers: onSwapPlayers!,
+                    child: slot,
+                  )
+                : slot,
           );
         }),
       ],
+    );
+  }
+}
+
+/// Wraps a [PlayerSlot] so its avatar can be dragged onto another player to
+/// swap their positions, and so it can receive another dragged player.
+class _SwappableSlot extends StatelessWidget {
+  const _SwappableSlot({
+    required this.player,
+    required this.size,
+    required this.onSwapPlayers,
+    required this.child,
+  });
+
+  final MatchPlayer player;
+  final double size;
+  final void Function(int draggedPlayerId, int targetPlayerId) onSwapPlayers;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.rpc;
+
+    return DragTarget<int>(
+      onWillAcceptWithDetails: (details) => details.data != player.id,
+      onAcceptWithDetails: (details) => onSwapPlayers(details.data, player.id),
+      builder: (context, candidateData, rejectedData) {
+        final isTargeted = candidateData.isNotEmpty;
+
+        final draggable = Draggable<int>(
+          data: player.id,
+          dragAnchorStrategy: pointerDragAnchorStrategy,
+          feedback: _DragFeedback(player: player, size: size),
+          childWhenDragging: Opacity(opacity: 0.35, child: child),
+          child: child,
+        );
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: isTargeted
+                ? c.primary.withValues(alpha: 0.12)
+                : Colors.transparent,
+            border: Border.all(
+              color: isTargeted
+                  ? c.primary.withValues(alpha: 0.6)
+                  : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.grab,
+            child: draggable,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DragFeedback extends StatelessWidget {
+  const _DragFeedback({required this.player, required this.size});
+
+  final MatchPlayer player;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.translate(
+      offset: Offset(-(size + 4) / 2, -(size + 4) / 2),
+      child: Material(
+        color: Colors.transparent,
+        child: Opacity(
+          opacity: 0.9,
+          child: _PlayerAvatar(player: player, size: size),
+        ),
+      ),
     );
   }
 }

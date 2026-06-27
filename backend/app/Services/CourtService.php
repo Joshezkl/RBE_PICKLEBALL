@@ -306,6 +306,47 @@ class CourtService
         $match->update([$slotField => $replacement->id]);
     }
 
+    public function swapMatchPlayers(
+        PlaySession $session,
+        Court $court,
+        int $playerAId,
+        int $playerBId,
+    ): void {
+        $session->refresh();
+        $court->refresh();
+
+        if ($court->play_session_id !== $session->id) {
+            throw new \InvalidArgumentException('Court not in this session');
+        }
+
+        if ($court->status !== 'in_match' || ! $court->current_match_id) {
+            throw new \RuntimeException('Court has no active match');
+        }
+
+        $match = MatchGame::query()->findOrFail($court->current_match_id);
+
+        if ($match->status !== 'in_match') {
+            throw new \RuntimeException('Match is not active');
+        }
+
+        if ($playerAId === $playerBId) {
+            throw new \InvalidArgumentException('Cannot swap a player with themselves');
+        }
+
+        if (! $this->playerIsInMatch($match, $playerAId)
+            || ! $this->playerIsInMatch($match, $playerBId)) {
+            throw new \InvalidArgumentException('Both players must be on this court');
+        }
+
+        $slotA = $this->findPlayerSlot($match, $playerAId);
+        $slotB = $this->findPlayerSlot($match, $playerBId);
+
+        $match->update([
+            $slotA => $playerBId,
+            $slotB => $playerAId,
+        ]);
+    }
+
     private function findPlayerSlot(MatchGame $match, int $playerId): string
     {
         return match (true) {

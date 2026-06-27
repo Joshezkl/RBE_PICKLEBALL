@@ -68,6 +68,7 @@ class QueuePlayer {
     required this.wins,
     required this.losses,
     required this.position,
+    this.joinedAt,
   });
 
   final int id;
@@ -76,6 +77,9 @@ class QueuePlayer {
   final int losses;
   final int position;
 
+  /// When the player entered this queue, used to show how long they've waited.
+  final DateTime? joinedAt;
+
   factory QueuePlayer.fromJson(Map<String, dynamic> json) {
     return QueuePlayer(
       id: json['id'] as int,
@@ -83,6 +87,9 @@ class QueuePlayer {
       wins: json['wins'] as int? ?? 0,
       losses: json['losses'] as int? ?? 0,
       position: json['position'] as int,
+      joinedAt: json['joinedAt'] != null
+          ? DateTime.tryParse(json['joinedAt'] as String)
+          : null,
     );
   }
 }

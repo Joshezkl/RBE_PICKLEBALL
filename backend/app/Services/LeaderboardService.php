@@ -7,32 +7,86 @@ use App\Models\PlaySession;
 use App\Models\SessionPlayer;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class LeaderboardService
 {
     private const MIN_MATCHES = 3;
 
+    public static function allTimeKey(): string
+    {
+        return 'rpc:leaderboard:all-time';
+    }
+
+    public static function sessionKey(int $sessionId): string
+    {
+        return "rpc:leaderboard:session:{$sessionId}";
+    }
+
+    public static function monthKey(int $year, int $month): string
+    {
+        return "rpc:leaderboard:month:{$year}-{$month}";
+    }
+
+    public static function seasonKey(int $year): string
+    {
+        return "rpc:leaderboard:season:{$year}";
+    }
+
+    /**
+     * Leaderboards only change when a match is scored. Invalidate the rankings
+     * a write could have affected (all-time, the current period, and the
+     * specific session), letting the rest serve from cache until their TTL.
+     */
+    public static function invalidate(?int $sessionId = null): void
+    {
+        $now = now();
+
+        Cache::forget(self::allTimeKey());
+        Cache::forget(self::monthKey($now->year, $now->month));
+        Cache::forget(self::seasonKey($now->year));
+
+        if ($sessionId !== null) {
+            Cache::forget(self::sessionKey($sessionId));
+        }
+    }
+
+    private function remember(string $key, \Closure $callback): mixed
+    {
+        $ttl = (int) config('rpc.cache.leaderboard_ttl', 0);
+
+        if ($ttl <= 0) {
+            return $callback();
+        }
+
+        return Cache::remember($key, $ttl, $callback);
+    }
+
     public function allTime(): array
     {
-        $players = ClubPlayer::query()
-            ->where('is_guest', false)
-            ->where('is_tournament_only', false)
-            ->where('total_matches', '>=', self::MIN_MATCHES)
-            ->get();
+        return $this->remember(self::allTimeKey(), function () {
+            $players = ClubPlayer::query()
+                ->where('is_guest', false)
+                ->where('is_tournament_only', false)
+                ->where('total_matches', '>=', self::MIN_MATCHES)
+                ->get();
 
-        return $this->rankClubPlayers($players);
+            return $this->rankClubPlayers($players);
+        });
     }
 
     public function session(PlaySession $session): array
     {
-        $entries = SessionPlayer::query()
-            ->with('clubPlayer')
-            ->where('play_session_id', $session->id)
-            ->whereHas('clubPlayer', fn ($q) => $q->where('is_guest', false))
-            ->where('session_matches', '>=', self::MIN_MATCHES)
-            ->get();
+        return $this->remember(self::sessionKey($session->id), function () use ($session) {
+            $entries = SessionPlayer::query()
+                ->with('clubPlayer')
+                ->where('play_session_id', $session->id)
+                ->whereHas('clubPlayer', fn ($q) => $q->where('is_guest', false))
+                ->where('session_matches', '>=', self::MIN_MATCHES)
+                ->get();
 
-        return $this->rankSessionPlayers($entries);
+            return $this->rankSessionPlayers($entries);
+        });
     }
 
     public function monthly(?int $year = null, ?int $month = null): array
@@ -41,22 +95,22 @@ class LeaderboardService
         $year = $year ?? $now->year;
         $month = $month ?? $now->month;
 
-        return $this->period(
+        return $this->remember(self::monthKey($year, $month), fn () => $this->period(
             Carbon::create($year, $month, 1)->startOfMonth(),
             Carbon::create($year, $month, 1)->endOfMonth(),
             "month:{$year}-{$month}",
-        );
+        ));
     }
 
     public function season(?int $year = null): array
     {
         $year = $year ?? now()->year;
 
-        return $this->period(
+        return $this->remember(self::seasonKey($year), fn () => $this->period(
             Carbon::create($year, 1, 1)->startOfDay(),
             Carbon::create($year, 12, 31)->endOfDay(),
             "season:{$year}",
-        );
+        ));
     }
 
     /**

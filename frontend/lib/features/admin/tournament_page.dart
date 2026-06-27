@@ -1118,7 +1118,7 @@ class _TournamentCourtsPanel extends StatelessWidget {
     final hasOccupiedCourt = display.courts.any((court) => court.hasMatch);
     final courtCardHeight =
         tournamentCourtCardHeightFor(maxSlotsPerTeam) +
-        ((hasOpenCourt || hasOccupiedCourt) ? 34.0 : 0.0);
+        ((hasOpenCourt || hasOccupiedCourt) ? 48.0 : 0.0);
 
     return RpcCard.compact(
       child: Column(
@@ -1492,38 +1492,23 @@ class _TournamentCourtScoreCard extends StatelessWidget {
           ),
         ],
         if (isOpen) ...[
-          const SizedBox(height: 6),
-          FilledButton(
+          const SizedBox(height: 8),
+          _TournamentCourtActionButton(
+            label: 'Assign court',
+            icon: Icons.add_circle_outline_rounded,
             onPressed: courtCandidates.isNotEmpty
                 ? () => onAssignCourt(court, pendingMatches)
                 : null,
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              'Assign court',
-              style: TextStyle(fontSize: 11),
-            ),
           ),
         ] else if (court.hasMatch) ...[
-          const SizedBox(height: 6),
-          OutlinedButton(
+          const SizedBox(height: 8),
+          _TournamentCourtActionButton(
+            label: 'Change match',
+            icon: Icons.swap_horiz_rounded,
+            outlined: true,
             onPressed: replaceCandidates.isNotEmpty
                 ? () => onReplaceCourt(court, pendingMatches)
                 : null,
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              'Change match',
-              style: TextStyle(fontSize: 11),
-            ),
           ),
         ],
       ],
@@ -1556,6 +1541,71 @@ class _TournamentCourtScoreCard extends StatelessWidget {
               child: decorated,
             )
           : decorated,
+    );
+  }
+}
+
+class _TournamentCourtActionButton extends StatelessWidget {
+  const _TournamentCourtActionButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.outlined = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool outlined;
+
+  @override
+  Widget build(BuildContext context) {
+    const buttonHeight = 36.0;
+    const maxButtonWidth = 240.0;
+
+    final child = SizedBox(
+      height: buttonHeight,
+      child: outlined
+          ? OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 16),
+              label: Text(label),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            )
+          : FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 16),
+              label: Text(label),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+    );
+
+    return Align(
+      alignment: Alignment.center,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: maxButtonWidth),
+        child: SizedBox(width: double.infinity, child: child),
+      ),
     );
   }
 }

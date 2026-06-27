@@ -6,6 +6,7 @@ import '../../core/theme/rpc_typography.dart';
 import '../../core/widgets/next_up_badge.dart';
 import '../../core/widgets/rpc_card.dart';
 import '../../core/widgets/rpc_status_badge.dart';
+import '../../core/widgets/wait_time_indicator.dart';
 import '../../core/theme/rpc_spacing.dart';
 
 class QueueDragData {
@@ -269,6 +270,13 @@ class QueuePanel extends StatelessWidget {
               '${player.wins}W · ${player.losses}L',
               style: RpcTypography.bodySmallMuted(context),
             ),
+            if (player.joinedAt != null) ...[
+              const SizedBox(height: 2),
+              WaitTimeIndicator(
+                since: player.joinedAt,
+                compact: compact,
+              ),
+            ],
             if (isNextUp || isOnDeck) ...[
               const SizedBox(height: 4),
               NextUpBadge(
@@ -279,7 +287,7 @@ class QueuePanel extends StatelessWidget {
             ],
           ],
         ),
-        isThreeLine: isNextUp || isOnDeck,
+        isThreeLine: isNextUp || isOnDeck || player.joinedAt != null,
         trailing: (onRemove == null && onEdit == null)
             ? null
             : Row(

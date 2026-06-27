@@ -18,6 +18,7 @@ class CourtCardWrap extends StatelessWidget {
     this.onManualAssign,
     this.onAssignNext,
     this.onRemovePlayer,
+    this.onSwapPlayers,
   });
 
   final List<CourtInfo> courts;
@@ -30,6 +31,8 @@ class CourtCardWrap extends StatelessWidget {
   final void Function(CourtInfo court)? onManualAssign;
   final void Function(CourtInfo court)? onAssignNext;
   final void Function(CourtInfo court, int playerId)? onRemovePlayer;
+  final void Function(CourtInfo court, int draggedPlayerId, int targetPlayerId)?
+      onSwapPlayers;
 
   int _columns(double width) {
     var cols = RpcLayout.columns(
@@ -67,6 +70,7 @@ class CourtCardWrap extends StatelessWidget {
                 onManualAssign: onManualAssign,
                 onAssignNext: onAssignNext,
                 onRemovePlayer: onRemovePlayer,
+                onSwapPlayers: onSwapPlayers,
               ),
             );
           }).toList(),

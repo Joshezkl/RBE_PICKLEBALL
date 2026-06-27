@@ -239,6 +239,18 @@ class _AdminPageState extends State<AdminPage> {
     await _controller.removePlayerFromCourt(court.id, playerId);
   }
 
+  Future<void> _swapCourtPlayers(
+    CourtInfo court,
+    int draggedPlayerId,
+    int targetPlayerId,
+  ) async {
+    await _controller.swapCourtPlayers(
+      court.id,
+      draggedPlayerId,
+      targetPlayerId,
+    );
+  }
+
   Future<void> _editPlayerName(int playerId, String currentName) async {
     final updated = await showDialog<String>(
       context: context,
@@ -582,6 +594,7 @@ class _AdminPageState extends State<AdminPage> {
           onManualAssign: _manualAssign,
           onAssignNext: _assignNextUp,
           onRemovePlayer: _removeFromCourt,
+          onSwapPlayers: _swapCourtPlayers,
         ),
       ],
     );

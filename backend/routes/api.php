@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CheckInController;
 use App\Http\Controllers\Api\ClubPlayerController;
 use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\MatchController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\SessionPresetController;
@@ -105,6 +106,7 @@ Route::middleware(VerifyAdminPin::class)->group(function () {
     Route::post('/sessions/{session}/courts/{court}/assign', [MatchController::class, 'assign']);
     Route::post('/sessions/{session}/courts/{court}/assign-next', [MatchController::class, 'assignNext']);
     Route::post('/sessions/{session}/courts/{court}/players/{player}/remove', [MatchController::class, 'removePlayer']);
+    Route::post('/sessions/{session}/courts/{court}/swap-players', [MatchController::class, 'swapPlayers']);
 
     Route::patch('/sessions/{session}/challenge-court/configure', [ChallengeCourtController::class, 'configure']);
     Route::post('/sessions/{session}/challenge-court/open', [ChallengeCourtController::class, 'open']);

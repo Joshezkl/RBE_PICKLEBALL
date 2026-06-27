@@ -341,6 +341,28 @@ class ApiClient {
     );
   }
 
+  Future<SessionState> swapCourtPlayers(
+    int sessionId,
+    int courtId,
+    int playerAId,
+    int playerBId,
+  ) async {
+    final response = await _client.post(
+      Uri.parse(
+        '${AppConfig.apiBaseUrl}/sessions/$sessionId/courts/$courtId/swap-players',
+      ),
+      headers: _headers,
+      body: jsonEncode({
+        'player_a_id': playerAId,
+        'player_b_id': playerBId,
+      }),
+    );
+    _throwOnError(response);
+    return SessionState.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<SessionState> updateSessionSettings(
     int sessionId, {
     bool? autoAssignEnabled,

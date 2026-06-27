@@ -25,8 +25,8 @@ class ChallengeCourtController extends Controller
     public function configure(Request $request, PlaySession $session): JsonResponse
     {
         $validated = $request->validate([
-            'court_numbers' => 'present|array|max:2',
-            'court_numbers.*' => 'integer|min:1',
+            'court_numbers' => 'present|array',
+            'court_numbers.*' => 'integer|min:1|distinct',
         ]);
 
         try {

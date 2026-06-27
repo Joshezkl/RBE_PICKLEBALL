@@ -50,9 +50,7 @@ class ChallengeCourtService
     public function configureCourts(PlaySession $session, array $courtNumbers): void
     {
         $courtNumbers = array_values(array_unique(array_map('intval', $courtNumbers)));
-        if (count($courtNumbers) > 2) {
-            throw new \InvalidArgumentException('Select at most 2 challenge courts');
-        }
+        sort($courtNumbers);
 
         foreach ($courtNumbers as $number) {
             if ($number < 1 || $number > $session->court_count) {

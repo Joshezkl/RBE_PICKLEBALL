@@ -50,17 +50,17 @@ class SessionController extends Controller
             return response()->json(['message' => 'No active session'], 404);
         }
 
-        return response()->json($this->stateService->build($session));
+        return response()->json($this->stateService->buildActiveCached($session));
     }
 
     public function state(PlaySession $session): JsonResponse
     {
-        return response()->json($this->stateService->build($session));
+        return response()->json($this->stateService->buildCached($session));
     }
 
     public function live(PlaySession $session): JsonResponse
     {
-        return response()->json($this->stateService->buildLive($session));
+        return response()->json($this->stateService->buildLiveCached($session));
     }
 
     public function end(PlaySession $session): JsonResponse
@@ -89,7 +89,7 @@ class SessionController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json($this->stateService->build($session->fresh()));
+        return response()->json($this->broadcastState($session->fresh()));
     }
 
     public function report(PlaySession $session): JsonResponse

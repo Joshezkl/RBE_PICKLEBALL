@@ -7,6 +7,7 @@ use App\Models\MatchGame;
 use App\Models\PlaySession;
 use App\Support\MatchMode;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class StateService
 {
@@ -18,6 +19,33 @@ class StateService
         private ChallengeCourtService $challengeCourtService,
     ) {}
 
+    public static function liveCacheKey(int $sessionId): string
+    {
+        return "rpc:state:live:{$sessionId}";
+    }
+
+    public static function stateCacheKey(int $sessionId): string
+    {
+        return "rpc:state:full:{$sessionId}";
+    }
+
+    public static function activeCacheKey(): string
+    {
+        return 'rpc:state:active';
+    }
+
+    /**
+     * Drop every cached payload that could be affected by a write to $sessionId.
+     * Called from a single choke point (BroadcastsSessionState) so cached reads
+     * never serve data older than the most recent mutation.
+     */
+    public static function invalidate(int $sessionId): void
+    {
+        Cache::forget(self::liveCacheKey($sessionId));
+        Cache::forget(self::stateCacheKey($sessionId));
+        Cache::forget(self::activeCacheKey());
+    }
+
     public function build(PlaySession $session): array
     {
         $history = $this->loadMatchHistory($session, 20);
@@ -27,6 +55,45 @@ class StateService
             'finishedMatchCount' => $this->finishedMatchCount($session),
             'pendingPayments' => $this->paymentService->pendingForSession($session),
         ]);
+    }
+
+    /**
+     * Cached full state for the /state endpoint. Many display clients poll the
+     * same session; the short TTL collapses concurrent rebuilds into one.
+     */
+    public function buildCached(PlaySession $session): array
+    {
+        $ttl = (int) config('rpc.cache.state_ttl', 0);
+
+        if ($ttl <= 0) {
+            return $this->build($session);
+        }
+
+        return Cache::remember(
+            self::stateCacheKey($session->id),
+            $ttl,
+            fn () => $this->build($session),
+        );
+    }
+
+    /**
+     * Cached full state for the active session (/sessions/active). The active
+     * session id can change, so this is keyed separately and invalidated on
+     * every write.
+     */
+    public function buildActiveCached(PlaySession $session): array
+    {
+        $ttl = (int) config('rpc.cache.state_ttl', 0);
+
+        if ($ttl <= 0) {
+            return $this->build($session);
+        }
+
+        return Cache::remember(
+            self::activeCacheKey(),
+            $ttl,
+            fn () => $this->build($session),
+        );
     }
 
     /**
@@ -41,6 +108,24 @@ class StateService
             'finishedMatchCount' => $this->finishedMatchCount($session),
             'pendingPayments' => [],
         ]);
+    }
+
+    /**
+     * Cached lightweight state for the high-frequency /live polling endpoint.
+     */
+    public function buildLiveCached(PlaySession $session): array
+    {
+        $ttl = (int) config('rpc.cache.live_ttl', 0);
+
+        if ($ttl <= 0) {
+            return $this->buildLive($session);
+        }
+
+        return Cache::remember(
+            self::liveCacheKey($session->id),
+            $ttl,
+            fn () => $this->buildLive($session),
+        );
     }
 
     /**
