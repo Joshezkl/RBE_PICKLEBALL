@@ -3,8 +3,9 @@ import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
-import 'config.dart';
 import 'admin_pin_controller.dart';
+import 'config.dart';
+import 'data_cache.dart';
 import 'models.dart';
 import 'tournament_models.dart';
 
@@ -42,17 +43,88 @@ class ApiClient {
         if (_resolvedAdminPin.isNotEmpty) 'X-Admin-Pin': _resolvedAdminPin,
       };
 
-  Future<SessionState> getActiveSession() async {
+  static void invalidateCache({String? prefix}) {
+    if (prefix == null) {
+      DataCache.clear();
+      return;
+    }
+    DataCache.invalidatePrefix(prefix);
+  }
+
+  Future<T> _cachedGet<T>(
+    String cacheKey,
+    Future<T> Function() fetch, {
+    Duration? ttl,
+  }) async {
+    final effectiveTtl = ttl ?? AppConfig.screenCacheTtl;
+    final cached = DataCache.get<T>(cacheKey, effectiveTtl);
+    if (cached != null) return cached;
+
+    final value = await fetch();
+    DataCache.set(cacheKey, value);
+    return value;
+  }
+
+  void _invalidateSessionCaches() {
+    DataCache.invalidatePrefix('sessions/');
+    DataCache.invalidate('sessions/active:empty');
+    DataCache.invalidate('players');
+    DataCache.invalidatePrefix('leaderboard/');
+    DataCache.invalidate('admin/revenue');
+  }
+
+  void _invalidateTournamentCaches({int? tournamentId}) {
+    DataCache.invalidate('tournaments');
+    DataCache.invalidate('tournaments/active');
+    if (tournamentId != null) {
+      DataCache.invalidate('tournaments/$tournamentId');
+    } else {
+      DataCache.invalidatePrefix('tournaments/');
+    }
+  }
+
+  Future<SessionState?> getActiveSession({bool force = false}) async {
+    if (force) {
+      DataCache.invalidate('sessions/active');
+      DataCache.invalidate('sessions/active:empty');
+    }
+
+    if (!force &&
+        DataCache.get<bool>('sessions/active:empty', AppConfig.screenCacheTtl) ==
+            true) {
+      return null;
+    }
+
+    final cached =
+        DataCache.get<SessionState>('sessions/active', AppConfig.screenCacheTtl);
+    if (!force && cached != null) {
+      return cached;
+    }
+
     final response = await _getPoll(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/active'),
     );
+
+    // Legacy backends returned 404 when no session was running.
     if (response.statusCode == 404) {
-      throw ApiException('No active session', statusCode: 404);
+      DataCache.set('sessions/active:empty', true);
+      DataCache.invalidate('sessions/active');
+      return null;
     }
+
     _throwOnError(response);
-    return SessionState.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
-    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (body['active'] == false) {
+      DataCache.set('sessions/active:empty', true);
+      DataCache.invalidate('sessions/active');
+      return null;
+    }
+
+    final state = SessionState.fromJson(body);
+    DataCache.set('sessions/active', state);
+    DataCache.invalidate('sessions/active:empty');
+    return state;
   }
 
   Future<SessionState> getSessionState(int sessionId) async {
@@ -98,6 +170,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -121,10 +194,12 @@ class ApiClient {
       }),
     );
     if (response.statusCode == 202) {
+      _invalidateSessionCaches();
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       return SessionState.fromJson(body['state'] as Map<String, dynamic>);
     }
     _throwOnError(response);
+    _invalidateSessionCaches();
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return SessionState.fromJson(body['state'] as Map<String, dynamic>);
   }
@@ -137,6 +212,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -175,6 +251,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -194,6 +271,7 @@ class ApiClient {
       body: jsonEncode({'score_a': scoreA, 'score_b': scoreB}),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -207,6 +285,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -224,6 +303,7 @@ class ApiClient {
       body: jsonEncode({'court_numbers': courtNumbers}),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -237,6 +317,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -250,6 +331,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -271,6 +353,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -287,6 +370,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -303,6 +387,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -319,6 +404,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -336,6 +422,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -358,6 +445,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -381,21 +469,26 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
   }
 
-  Future<List<SessionPreset>> getSessionPresets() async {
-    final response = await _actionClient.get(
-      Uri.parse('${AppConfig.apiBaseUrl}/session-presets'),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['presets'] as List<dynamic>? ?? [])
-        .map((e) => SessionPreset.fromJson(e as Map<String, dynamic>))
-        .toList();
+  Future<List<SessionPreset>> getSessionPresets({bool force = false}) async {
+    if (force) DataCache.invalidate('session-presets');
+
+    return _cachedGet('session-presets', () async {
+      final response = await _actionClient.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/session-presets'),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (body['presets'] as List<dynamic>? ?? [])
+          .map((e) => SessionPreset.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
   }
 
   Future<SessionPreset> saveSessionPreset({
@@ -417,6 +510,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    DataCache.invalidate('session-presets');
     return SessionPreset.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -428,6 +522,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    DataCache.invalidate('session-presets');
   }
 
   Future<SessionState> manualAssign(
@@ -443,6 +538,7 @@ class ApiClient {
       body: jsonEncode({'player_ids': playerIds}),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -477,16 +573,22 @@ class ApiClient {
   Future<Map<String, int>> getCalendarMarkers({
     required int year,
     required int month,
+    bool force = false,
   }) async {
-    final response = await _actionClient.get(
-      Uri.parse(
-        '${AppConfig.apiBaseUrl}/sessions/calendar?year=$year&month=$month',
-      ),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return _parseIntMap(body['markers']);
+    final cacheKey = 'sessions/calendar:$year-$month';
+    if (force) DataCache.invalidate(cacheKey);
+
+    return _cachedGet(cacheKey, () async {
+      final response = await _actionClient.get(
+        Uri.parse(
+          '${AppConfig.apiBaseUrl}/sessions/calendar?year=$year&month=$month',
+        ),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return _parseIntMap(body['markers']);
+    });
   }
 
   Map<String, int> _parseIntMap(dynamic raw) {
@@ -499,46 +601,70 @@ class ApiClient {
     );
   }
 
-  Future<List<SessionHistorySummary>> getSessionsOnDate(String date) async {
-    final response = await _actionClient.get(
-      Uri.parse('${AppConfig.apiBaseUrl}/sessions/history?date=$date'),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['sessions'] as List<dynamic>? ?? [])
-        .map((e) => SessionHistorySummary.fromJson(e as Map<String, dynamic>))
-        .toList();
+  Future<List<SessionHistorySummary>> getSessionsOnDate(
+    String date, {
+    bool force = false,
+  }) async {
+    final cacheKey = 'sessions/history:$date';
+    if (force) DataCache.invalidate(cacheKey);
+
+    return _cachedGet(cacheKey, () async {
+      final response = await _actionClient.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/sessions/history?date=$date'),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (body['sessions'] as List<dynamic>? ?? [])
+          .map((e) => SessionHistorySummary.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
   }
 
-  Future<SessionHistoryDetail> getSessionHistory(int sessionId) async {
-    final response = await _actionClient.get(
-      Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/history'),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    return SessionHistoryDetail.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
-    );
+  Future<SessionHistoryDetail> getSessionHistory(
+    int sessionId, {
+    bool force = false,
+  }) async {
+    final cacheKey = 'sessions/history-detail:$sessionId';
+    if (force) DataCache.invalidate(cacheKey);
+
+    return _cachedGet(cacheKey, () async {
+      final response = await _actionClient.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/history'),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      return SessionHistoryDetail.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    });
   }
 
   Future<({List<ClubPlayerInfo> players, int? activeSessionId})> getClubPlayers({
     String? search,
+    bool force = false,
   }) async {
-    final uri = Uri.parse('${AppConfig.apiBaseUrl}/players').replace(
-      queryParameters: {
-        if (search != null && search.isNotEmpty) 'search': search,
-      },
-    );
-    final response = await _actionClient.get(uri, headers: _headers);
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (
-      players: (body['players'] as List<dynamic>? ?? [])
-          .map((e) => ClubPlayerInfo.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      activeSessionId: body['activeSessionId'] as int?,
-    );
+    final cacheKey = search != null && search.isNotEmpty
+        ? 'players:search:$search'
+        : 'players';
+    if (force) DataCache.invalidatePrefix('players');
+
+    return _cachedGet(cacheKey, () async {
+      final uri = Uri.parse('${AppConfig.apiBaseUrl}/players').replace(
+        queryParameters: {
+          if (search != null && search.isNotEmpty) 'search': search,
+        },
+      );
+      final response = await _actionClient.get(uri, headers: _headers);
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (
+        players: (body['players'] as List<dynamic>? ?? [])
+            .map((e) => ClubPlayerInfo.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        activeSessionId: body['activeSessionId'] as int?,
+      );
+    });
   }
 
   Future<ClubPlayerInfo> registerClubPlayer(
@@ -556,6 +682,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    DataCache.invalidatePrefix('players');
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return ClubPlayerInfo.fromJson(body['player'] as Map<String, dynamic>);
   }
@@ -566,6 +693,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    DataCache.invalidatePrefix('players');
   }
 
   Future<SessionState> joinSession(
@@ -585,10 +713,12 @@ class ApiClient {
       }),
     );
     if (response.statusCode == 202) {
+      _invalidateSessionCaches();
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       return SessionState.fromJson(body['state'] as Map<String, dynamic>);
     }
     _throwOnError(response);
+    _invalidateSessionCaches();
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return SessionState.fromJson(body['state'] as Map<String, dynamic>);
   }
@@ -602,76 +732,94 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateSessionCaches();
     return SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
   }
 
-  Future<List<LeaderboardEntry>> getAllTimeLeaderboard() async {
-    final response = await _actionClient.get(
-      Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/all-time'),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['leaderboard'] as List<dynamic>? ?? [])
-        .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
-        .toList();
+  Future<List<LeaderboardEntry>> getAllTimeLeaderboard({bool force = false}) async {
+    if (force) DataCache.invalidate('leaderboard/all-time');
+
+    return _cachedGet('leaderboard/all-time', () async {
+      final response = await _actionClient.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/all-time'),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (body['leaderboard'] as List<dynamic>? ?? [])
+          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
   }
 
   Future<({int sessionId, String sessionName, List<LeaderboardEntry> entries})>
-      getSessionLeaderboard(int sessionId) async {
-    final response = await _actionClient.get(
-      Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/session/$sessionId'),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (
-      sessionId: body['sessionId'] as int,
-      sessionName: body['sessionName'] as String,
-      entries: (body['leaderboard'] as List<dynamic>? ?? [])
-          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
+      getSessionLeaderboard(int sessionId, {bool force = false}) async {
+    final cacheKey = 'leaderboard/session:$sessionId';
+    if (force) DataCache.invalidate(cacheKey);
+
+    return _cachedGet(cacheKey, () async {
+      final response = await _actionClient.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/session/$sessionId'),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (
+        sessionId: body['sessionId'] as int,
+        sessionName: body['sessionName'] as String,
+        entries: (body['leaderboard'] as List<dynamic>? ?? [])
+            .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+    });
   }
 
   Future<({String label, List<LeaderboardEntry> entries})>
-      getMonthlyLeaderboard({int? year, int? month}) async {
-    final query = <String, String>{};
-    if (year != null) query['year'] = '$year';
-    if (month != null) query['month'] = '$month';
+      getMonthlyLeaderboard({int? year, int? month, bool force = false}) async {
+    final y = year ?? DateTime.now().year;
+    final m = month ?? DateTime.now().month;
+    final cacheKey = 'leaderboard/month:$y-$m';
+    if (force) DataCache.invalidate(cacheKey);
 
-    final uri = Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/monthly')
-        .replace(queryParameters: query.isEmpty ? null : query);
-    final response = await _actionClient.get(uri, headers: _headers);
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (
-      label: body['label'] as String? ?? 'This Month',
-      entries: (body['leaderboard'] as List<dynamic>? ?? [])
-          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
+    return _cachedGet(cacheKey, () async {
+      final uri = Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/monthly')
+          .replace(queryParameters: {'year': '$y', 'month': '$m'});
+      final response = await _actionClient.get(uri, headers: _headers);
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (
+        label: body['label'] as String? ?? 'This Month',
+        entries: (body['leaderboard'] as List<dynamic>? ?? [])
+            .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+    });
   }
 
   Future<({String label, List<LeaderboardEntry> entries})> getSeasonLeaderboard({
     int? year,
+    bool force = false,
   }) async {
-    final uri = year == null
-        ? Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/season')
-        : Uri.parse(
-            '${AppConfig.apiBaseUrl}/leaderboard/season?year=$year',
-          );
-    final response = await _actionClient.get(uri, headers: _headers);
-    _throwOnError(response);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (
-      label: body['label'] as String? ?? 'Season',
-      entries: (body['leaderboard'] as List<dynamic>? ?? [])
-          .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
+    final y = year ?? DateTime.now().year;
+    final cacheKey = 'leaderboard/season:$y';
+    if (force) DataCache.invalidate(cacheKey);
+
+    return _cachedGet(cacheKey, () async {
+      final uri = Uri.parse(
+        '${AppConfig.apiBaseUrl}/leaderboard/season?year=$y',
+      );
+      final response = await _actionClient.get(uri, headers: _headers);
+      _throwOnError(response);
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (
+        label: body['label'] as String? ?? 'Season',
+        entries: (body['leaderboard'] as List<dynamic>? ?? [])
+            .map((e) => LeaderboardEntry.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+    });
   }
 
   Future<PlayerProfileDetail> getPlayerProfile(int clubPlayerId) async {
@@ -743,54 +891,76 @@ class ApiClient {
     String? from,
     String? to,
     int? sessionId,
+    bool force = false,
   }) async {
-    final query = <String, String>{};
-    if (from != null) query['from'] = from;
-    if (to != null) query['to'] = to;
-    if (sessionId != null) query['session_id'] = '$sessionId';
+    final cacheKey = 'admin/revenue:${from ?? ''}:${to ?? ''}:${sessionId ?? ''}';
+    if (force) DataCache.invalidatePrefix('admin/revenue');
 
-    final uri = Uri.parse('${AppConfig.apiBaseUrl}/admin/revenue')
-        .replace(queryParameters: query.isEmpty ? null : query);
-    final response = await _actionClient.get(uri, headers: _headers);
-    _throwOnError(response);
-    return RevenueSummary.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
-    );
+    return _cachedGet(cacheKey, () async {
+      final query = <String, String>{};
+      if (from != null) query['from'] = from;
+      if (to != null) query['to'] = to;
+      if (sessionId != null) query['session_id'] = '$sessionId';
+
+      final uri = Uri.parse('${AppConfig.apiBaseUrl}/admin/revenue')
+          .replace(queryParameters: query.isEmpty ? null : query);
+      final response = await _actionClient.get(uri, headers: _headers);
+      _throwOnError(response);
+      return RevenueSummary.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    });
   }
 
-  Future<TournamentListResponse> listTournaments() async {
-    final response = await _actionClient.get(
-      Uri.parse('${AppConfig.apiBaseUrl}/tournaments'),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    return TournamentListResponse.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
-    );
+  Future<TournamentListResponse> listTournaments({bool force = false}) async {
+    if (force) DataCache.invalidate('tournaments');
+
+    return _cachedGet('tournaments', () async {
+      final response = await _actionClient.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/tournaments'),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      return TournamentListResponse.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    });
   }
 
-  Future<TournamentState> getTournament(int tournamentId) async {
-    final response = await _actionClient.get(
-      Uri.parse('${AppConfig.apiBaseUrl}/tournaments/$tournamentId'),
-      headers: _headers,
-    );
-    _throwOnError(response);
-    return TournamentState.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
-    );
+  Future<TournamentState> getTournament(
+    int tournamentId, {
+    bool force = false,
+  }) async {
+    final cacheKey = 'tournaments/$tournamentId';
+    if (force) DataCache.invalidate(cacheKey);
+
+    return _cachedGet(cacheKey, () async {
+      final response = await _actionClient.get(
+        Uri.parse('${AppConfig.apiBaseUrl}/tournaments/$tournamentId'),
+        headers: _headers,
+      );
+      _throwOnError(response);
+      return TournamentState.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    });
   }
 
-  Future<TournamentState?> getActiveTournament() async {
-    final response = await _getPoll(
-      Uri.parse('${AppConfig.apiBaseUrl}/tournaments/active'),
-    );
-    if (response.statusCode == 404) {
-      return null;
-    }
-    _throwOnError(response);
-    return TournamentState.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
-    );
+  Future<TournamentState?> getActiveTournament({bool force = false}) async {
+    if (force) DataCache.invalidate('tournaments/active');
+
+    return _cachedGet('tournaments/active', () async {
+      final response = await _getPoll(
+        Uri.parse('${AppConfig.apiBaseUrl}/tournaments/active'),
+      );
+      if (response.statusCode == 404) {
+        return null;
+      }
+      _throwOnError(response);
+      return TournamentState.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    });
   }
 
   Future<TournamentState> createTournament({
@@ -810,6 +980,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateTournamentCaches();
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -833,6 +1004,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -844,6 +1016,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -872,6 +1045,7 @@ class ApiClient {
       body: jsonEncode(body),
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -897,6 +1071,7 @@ class ApiClient {
       body: jsonEncode(body),
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     final decoded = jsonDecode(response.body) as Map<String, dynamic>;
 
     return (
@@ -913,6 +1088,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
   }
 
   Future<TournamentState> removeTournamentTeam(
@@ -924,6 +1100,7 @@ class ApiClient {
       headers: _headers,
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -964,6 +1141,7 @@ class ApiClient {
       }),
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -998,6 +1176,7 @@ class ApiClient {
       body: jsonEncode({'court_number': courtNumber}),
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
@@ -1016,6 +1195,7 @@ class ApiClient {
       body: jsonEncode({'court_number': courtNumber}),
     );
     _throwOnError(response);
+    _invalidateTournamentCaches(tournamentId: tournamentId);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );

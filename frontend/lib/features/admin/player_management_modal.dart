@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/decor/rpc_decor_empty_state.dart';
 import '../../core/api_client.dart';
+import '../../core/config.dart';
 import '../../core/match_modes.dart';
 import '../../core/models.dart';
 import '../../core/session_controller.dart';
@@ -129,7 +130,7 @@ class _PlayerManagementModalState extends State<PlayerManagementModal> {
     final query = search?.trim();
     final isSearch = query != null && query.isNotEmpty;
     final cacheFresh = _cacheLoadedAt != null &&
-        DateTime.now().difference(_cacheLoadedAt!) < const Duration(seconds: 20);
+        DateTime.now().difference(_cacheLoadedAt!) < AppConfig.screenCacheTtl;
 
     if (!force && !isSearch && cacheFresh && _cachedPlayers != null) {
       setState(() {

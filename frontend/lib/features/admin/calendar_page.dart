@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/config.dart';
 import '../../core/file_download.dart';
 import '../../core/match_modes.dart';
 import '../../core/models.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/theme/rpc_palette.dart';
 import '../../core/theme/rpc_typography.dart';
 import '../../core/widgets/rpc_card.dart';
@@ -27,7 +29,9 @@ class CalendarPage extends StatefulWidget {
 }
 
 class _CalendarPageState extends State<CalendarPage> {
-  late final ApiClient _api;
+  static _CalendarPageSnapshot? _snapshot;
+
+  final ApiClient _api = rpcApiClient;
   late DateTime _visibleMonth;
   late DateTime _selectedDate;
 
@@ -45,27 +49,44 @@ class _CalendarPageState extends State<CalendarPage> {
   @override
   void initState() {
     super.initState();
-    _api = ApiClient(
-      adminPin: widget.adminPin ?? rpcAdminPinController.pin,
-    );
+    _api.setAdminPin(widget.adminPin ?? rpcAdminPinController.pin);
     final now = DateTime.now();
     _visibleMonth = DateTime(now.year, now.month);
     _selectedDate = DateTime(now.year, now.month, now.day);
+
+    final cached = _snapshot;
+    if (cached != null && cached.isFresh) {
+      _markers = cached.markers;
+      _daySessions = cached.daySessions;
+      _selectedDetail = cached.selectedDetail;
+      _selectedSessionId = cached.selectedSessionId;
+      if (cached.visibleYear == _visibleMonth.year &&
+          cached.visibleMonth == _visibleMonth.month) {
+        _loadMonth(silent: true);
+        _loadDay(_selectedDate, silent: true);
+        return;
+      }
+    }
+
     _loadMonth();
     _loadDay(_selectedDate);
   }
 
-  Future<void> _loadMonth() async {
-    setState(() {
-      _loadingMonth = true;
-      _error = null;
-    });
+  Future<void> _loadMonth({bool silent = false, bool force = false}) async {
+    if (!silent) {
+      setState(() {
+        _loadingMonth = true;
+        _error = null;
+      });
+    }
     try {
       final markers = await _api.getCalendarMarkers(
         year: _visibleMonth.year,
         month: _visibleMonth.month,
+        force: force,
       );
       setState(() => _markers = markers);
+      _updateSnapshot();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -73,18 +94,29 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
-  Future<void> _loadDay(DateTime date) async {
-    setState(() {
-      _loadingDay = true;
-      _error = null;
-      _selectedDetail = null;
-      _selectedSessionId = null;
-    });
+  Future<void> _loadDay(
+    DateTime date, {
+    bool silent = false,
+    bool force = false,
+  }) async {
+    if (!silent) {
+      setState(() {
+        _loadingDay = true;
+        _error = null;
+        _selectedDetail = null;
+        _selectedSessionId = null;
+      });
+    }
     try {
-      final sessions = await _api.getSessionsOnDate(_formatDateKey(date));
+      final sessions = await _api.getSessionsOnDate(
+        _formatDateKey(date),
+        force: force,
+      );
       setState(() => _daySessions = sessions);
       if (sessions.isNotEmpty) {
-        await _loadSessionDetail(sessions.first.id);
+        await _loadSessionDetail(sessions.first.id, silent: silent, force: force);
+      } else {
+        _updateSnapshot();
       }
     } catch (e) {
       setState(() => _error = e.toString());
@@ -93,20 +125,39 @@ class _CalendarPageState extends State<CalendarPage> {
     }
   }
 
-  Future<void> _loadSessionDetail(int sessionId) async {
-    setState(() {
-      _loadingDetail = true;
-      _selectedSessionId = sessionId;
-      _error = null;
-    });
+  Future<void> _loadSessionDetail(
+    int sessionId, {
+    bool silent = false,
+    bool force = false,
+  }) async {
+    if (!silent) {
+      setState(() {
+        _loadingDetail = true;
+        _selectedSessionId = sessionId;
+        _error = null;
+      });
+    }
     try {
-      final detail = await _api.getSessionHistory(sessionId);
+      final detail = await _api.getSessionHistory(sessionId, force: force);
       setState(() => _selectedDetail = detail);
+      _updateSnapshot();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       setState(() => _loadingDetail = false);
     }
+  }
+
+  void _updateSnapshot() {
+    _snapshot = _CalendarPageSnapshot(
+      visibleYear: _visibleMonth.year,
+      visibleMonth: _visibleMonth.month,
+      selectedDateKey: _formatDateKey(_selectedDate),
+      markers: _markers,
+      daySessions: _daySessions,
+      selectedDetail: _selectedDetail,
+      selectedSessionId: _selectedSessionId,
+    );
   }
 
   void _selectDate(DateTime date) {
@@ -663,4 +714,28 @@ class _SessionListTile extends StatelessWidget {
     final minute = local.minute.toString().padLeft(2, '0');
     return '$hour:$minute $period';
   }
+}
+
+class _CalendarPageSnapshot {
+  _CalendarPageSnapshot({
+    required this.visibleYear,
+    required this.visibleMonth,
+    required this.selectedDateKey,
+    required this.markers,
+    required this.daySessions,
+    required this.selectedDetail,
+    required this.selectedSessionId,
+  }) : loadedAt = DateTime.now();
+
+  final int visibleYear;
+  final int visibleMonth;
+  final String selectedDateKey;
+  final Map<String, int> markers;
+  final List<SessionHistorySummary> daySessions;
+  final SessionHistoryDetail? selectedDetail;
+  final int? selectedSessionId;
+  final DateTime loadedAt;
+
+  bool get isFresh =>
+      DateTime.now().difference(loadedAt) < AppConfig.screenCacheTtl;
 }

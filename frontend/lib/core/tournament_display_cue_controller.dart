@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'display/display_audio.dart';
 import 'display/tournament_announcer.dart';
+import 'rpc_tournament_display_controller.dart';
 import 'tournament_display_controller.dart';
 import 'tournament_models.dart';
 
@@ -32,7 +33,7 @@ class TournamentDisplayCueController extends ChangeNotifier {
   bool celebrationsEnabled;
   bool voiceEnabled;
 
-  final TournamentDisplayController _display = TournamentDisplayController();
+  final TournamentDisplayController _display = rpcTournamentDisplayController;
 
   TournamentState? _previousState;
   TournamentCelebrationState? celebration;
@@ -44,6 +45,7 @@ class TournamentDisplayCueController extends ChangeNotifier {
   String? get error => _display.error;
 
   Future<void> initialize() async {
+    _display.retain();
     _display.addListener(_onDisplayUpdate);
     await _display.initialize();
     _previousState = _display.state;
@@ -224,7 +226,7 @@ class TournamentDisplayCueController extends ChangeNotifier {
   @override
   void dispose() {
     _display.removeListener(_onDisplayUpdate);
-    _display.dispose();
+    _display.release();
     TournamentAnnouncer.instance.dispose();
     super.dispose();
   }

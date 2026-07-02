@@ -28,9 +28,26 @@ class SessionController extends ChangeNotifier {
   AdaptivePollTimer? _pollTimer;
   bool _readOnlyPolling = false;
   bool _mutating = false;
+  DateTime? _lastFetchAt;
+  int _retainCount = 0;
+  bool _noActiveSession = false;
 
   bool get hasActiveSession => state?.session.isActive ?? false;
   bool get mutating => _mutating;
+
+  /// Call from a screen's [initState]; paired with [release] in [dispose].
+  void retain() => _retainCount++;
+
+  /// Call from a screen's [dispose]. Stops live polling when no screens hold
+  /// a reference (e.g. user is on Calendar, which does not need polling).
+  void release() {
+    if (_retainCount <= 0) return;
+    _retainCount--;
+    if (_retainCount == 0) {
+      _pollTimer?.stop();
+      liveUpdates.disconnect();
+    }
+  }
 
   void setAdminPin(String pin) {
     adminPin = pin;
@@ -44,22 +61,47 @@ class SessionController extends ChangeNotifier {
     }
   }
 
-  Future<void> initialize({bool readOnly = false}) async {
-    loading = true;
+  Future<void> initialize({
+    bool readOnly = false,
+    bool force = false,
+  }) async {
+    _readOnlyPolling = readOnly;
+
+    final cacheFresh = !force &&
+        _lastFetchAt != null &&
+        DateTime.now().difference(_lastFetchAt!) < AppConfig.screenCacheTtl &&
+        (state != null || _noActiveSession);
+
+    if (cacheFresh) {
+      _startLiveUpdates(readOnly: readOnly);
+      return;
+    }
+
+    loading = state == null && !_noActiveSession;
     error = null;
     notifyListeners();
 
     try {
-      state = await api.getActiveSession();
+      final active = await api.getActiveSession(force: force);
+      if (active == null) {
+        state = null;
+        _noActiveSession = true;
+      } else {
+        state = active;
+        _noActiveSession = false;
+      }
+      _lastFetchAt = DateTime.now();
       _startLiveUpdates(readOnly: readOnly);
     } on ApiException catch (e) {
-      if (e.statusCode != 404) {
-        error = e.message;
-      }
+      error = e.message;
       state = null;
+      _noActiveSession = false;
+      _lastFetchAt = null;
     } catch (e) {
       error = e.toString();
       state = null;
+      _noActiveSession = false;
+      _lastFetchAt = null;
     } finally {
       loading = false;
       notifyListeners();
@@ -67,11 +109,15 @@ class SessionController extends ChangeNotifier {
   }
 
   void _startLiveUpdates({required bool readOnly}) {
-    _pollTimer?.stop();
     if (state == null) return;
 
     _readOnlyPolling = readOnly;
     final sessionId = state!.session.id;
+
+    if (_pollTimer != null) {
+      _pollTimer!.setLiveUpdatesActive(liveUpdates.isConnected);
+      return;
+    }
 
     _pollTimer = AdaptivePollTimer(
       foregroundInterval: AppConfig.pollForegroundInterval,
@@ -143,6 +189,8 @@ class SessionController extends ChangeNotifier {
 
   void applyState(SessionState fresh) {
     state = fresh;
+    _noActiveSession = false;
+    _lastFetchAt = DateTime.now();
     notifyListeners();
   }
 
@@ -320,6 +368,8 @@ class SessionController extends ChangeNotifier {
 
     try {
       state = await action();
+      _noActiveSession = false;
+      _lastFetchAt = DateTime.now();
       notifyListeners();
       return true;
     } on ApiException catch (e) {
@@ -348,6 +398,8 @@ class SessionController extends ChangeNotifier {
     try {
       final result = await api.endSession(sessionId);
       state = result.state;
+      _noActiveSession = result.state.session.status != 'active';
+      _lastFetchAt = DateTime.now();
       lastReport = result.report;
       _pollTimer?.stop();
       liveUpdates.disconnect();
@@ -372,6 +424,8 @@ class SessionController extends ChangeNotifier {
 
     try {
       state = await action();
+      _noActiveSession = false;
+      _lastFetchAt = DateTime.now();
     } on ApiException catch (e) {
       error = e.message;
     } catch (e) {

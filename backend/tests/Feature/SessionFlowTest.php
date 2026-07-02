@@ -438,4 +438,14 @@ class SessionFlowTest extends TestCase
 
         return PlaySession::query()->findOrFail($response->json('session.id'));
     }
+
+    public function test_active_endpoint_returns_ok_when_no_session_running(): void
+    {
+        $this->getJson('/api/sessions/active')
+            ->assertOk()
+            ->assertJson([
+                'active' => false,
+                'message' => 'No active session',
+            ]);
+    }
 }

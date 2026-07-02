@@ -97,6 +97,35 @@ class StateService
     }
 
     /**
+     * Cached "no active session" payload for /sessions/active.
+     *
+     * Uses the same cache key as [buildActiveCached] so a session start/end
+     * invalidates both positive and negative responses together.
+     *
+     * @return array{active: false, message: string}
+     */
+    public function buildActiveEmptyCached(): array
+    {
+        $payload = [
+            'active' => false,
+            'message' => 'No active session',
+        ];
+
+        $ttl = (int) config('rpc.cache.state_ttl', 0);
+
+        if ($ttl <= 0) {
+            return $payload;
+        }
+
+        /** @var array{active: false, message: string} */
+        return Cache::remember(
+            self::activeCacheKey(),
+            $ttl,
+            fn () => $payload,
+        );
+    }
+
+    /**
      * Lightweight state for polling — skips heavy history and payment queries.
      */
     public function buildLive(PlaySession $session): array

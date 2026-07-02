@@ -4,6 +4,7 @@ import '../../core/adaptive_poll_timer.dart';
 import '../../core/api_client.dart';
 import '../../core/config.dart';
 import '../../core/models.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/theme/rpc_spacing.dart';
 import '../../core/widgets/leaderboard_view.dart';
 import '../../core/widgets/rpc_card.dart';
@@ -38,7 +39,9 @@ class LeaderboardPage extends StatefulWidget {
 }
 
 class _LeaderboardPageState extends State<LeaderboardPage> {
-  late final ApiClient _api;
+  static _LeaderboardSnapshot? _snapshot;
+
+  final ApiClient _api = rpcApiClient;
 
   List<LeaderboardEntry> _overallEntries = [];
   List<LeaderboardEntry> _monthlyEntries = [];
@@ -69,14 +72,26 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   @override
   void initState() {
     super.initState();
-    _api = ApiClient(
-      adminPin: widget.adminPin ?? rpcAdminPinController.pin,
-    );
+    _api.setAdminPin(widget.adminPin ?? rpcAdminPinController.pin);
     _sessionId = widget.sessionId;
     _sortMode = widget.scope == LeaderboardScope.session
         ? LeaderboardSortMode.currentSession
         : LeaderboardSortMode.overall;
-    _loadAll(silent: false);
+
+    final cached = _snapshot;
+    if (cached != null && cached.isFresh) {
+      _overallEntries = cached.overall;
+      _monthlyEntries = cached.monthly;
+      _seasonEntries = cached.season;
+      _sessionEntries = cached.session;
+      _sessionName = cached.sessionName;
+      _monthlyLabel = cached.monthlyLabel;
+      _seasonLabel = cached.seasonLabel;
+      _sessionId = cached.sessionId ?? _sessionId;
+      _sessionAvailable = cached.sessionAvailable;
+    }
+
+    _loadAll(silent: cached != null && cached.isFresh);
     _pollTimer = AdaptivePollTimer(
       foregroundInterval: AppConfig.pollForegroundInterval,
       backgroundInterval: AppConfig.pollBackgroundInterval,
@@ -191,6 +206,17 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           _sortMode = LeaderboardSortMode.overall;
         }
       });
+      _snapshot = _LeaderboardSnapshot(
+        overall: _overallEntries,
+        monthly: _monthlyEntries,
+        season: _seasonEntries,
+        session: _sessionEntries,
+        sessionName: _sessionName,
+        monthlyLabel: _monthlyLabel,
+        seasonLabel: _seasonLabel,
+        sessionId: _sessionId,
+        sessionAvailable: _sessionAvailable,
+      );
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -206,10 +232,8 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   })> _loadSessionEntries() async {
     var sessionId = _sessionId;
     if (sessionId == null) {
-      try {
-        final state = await _api.getActiveSession();
-        sessionId = state.session.id;
-      } catch (_) {
+      final state = await _api.getActiveSession();
+      if (state == null) {
         return (
           entries: <LeaderboardEntry>[],
           sessionName: null,
@@ -217,6 +241,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
           available: false,
         );
       }
+      sessionId = state.session.id;
     }
 
     final result = await _api.getSessionLeaderboard(sessionId);
@@ -294,7 +319,10 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       actions: [
         IconButton(
           tooltip: 'Refresh',
-          onPressed: () => _loadAll(silent: false),
+          onPressed: () {
+            ApiClient.invalidateCache(prefix: 'leaderboard/');
+            _loadAll(silent: false);
+          },
           icon: const Icon(Icons.refresh_rounded),
         ),
       ],
@@ -326,4 +354,32 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       ),
     );
   }
+}
+
+class _LeaderboardSnapshot {
+  _LeaderboardSnapshot({
+    required this.overall,
+    required this.monthly,
+    required this.season,
+    required this.session,
+    required this.sessionAvailable,
+    this.sessionName,
+    this.monthlyLabel,
+    this.seasonLabel,
+    this.sessionId,
+  }) : loadedAt = DateTime.now();
+
+  final List<LeaderboardEntry> overall;
+  final List<LeaderboardEntry> monthly;
+  final List<LeaderboardEntry> season;
+  final List<LeaderboardEntry> session;
+  final String? sessionName;
+  final String? monthlyLabel;
+  final String? seasonLabel;
+  final int? sessionId;
+  final bool sessionAvailable;
+  final DateTime loadedAt;
+
+  bool get isFresh =>
+      DateTime.now().difference(loadedAt) < AppConfig.screenCacheTtl;
 }

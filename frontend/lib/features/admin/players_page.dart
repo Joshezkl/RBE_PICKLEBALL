@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/admin_nav.dart';
 import '../../core/api_client.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/session_controller.dart';
 import '../../core/widgets/rpc_shell.dart';
 import '../../core/admin_pin_controller.dart';
@@ -18,15 +19,13 @@ class PlayersPage extends StatefulWidget {
 }
 
 class _PlayersPageState extends State<PlayersPage> {
-  late final SessionController _controller;
-  late final ApiClient _api;
+  final SessionController _controller = rpcSessionController;
 
   @override
   void initState() {
     super.initState();
     final pin = widget.adminPin ?? rpcAdminPinController.pin;
-    _api = ApiClient(adminPin: pin);
-    _controller = SessionController(apiClient: _api);
+    _controller.retain();
     _controller.setAdminPin(pin);
     _controller.initialize(readOnly: true);
     _controller.addListener(_onUpdate);
@@ -37,7 +36,7 @@ class _PlayersPageState extends State<PlayersPage> {
   @override
   void dispose() {
     _controller.removeListener(_onUpdate);
-    _controller.dispose();
+    _controller.release();
     super.dispose();
   }
 
@@ -58,7 +57,7 @@ class _PlayersPageState extends State<PlayersPage> {
       maxWidth: 960,
       fillViewport: true,
       body: PlayerManagementPanel(
-          api: _api,
+          api: _controller.api,
           sessionController: _controller,
           activeSessionId: state?.session.id,
           rosterPlayerNames: state?.rosterPlayerNames ?? const {},

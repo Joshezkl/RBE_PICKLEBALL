@@ -90,6 +90,10 @@ class AppConfig {
   static Duration get pollLiveInterval =>
       Duration(seconds: isDeployed ? 45 : 30);
 
+  /// How long screen navigation may reuse in-memory API/session data before
+  /// refetching. Keeps admin tab switches instant while polling stays fresh.
+  static const Duration screenCacheTtl = Duration(seconds: 60);
+
   static String _resolveValue({
     required String runtimeKey,
     required String compileTime,

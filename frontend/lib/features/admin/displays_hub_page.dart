@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/admin_nav.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/api_client.dart';
 import '../../core/session_controller.dart';
 import '../../core/theme/rpc_palette.dart';
@@ -23,8 +24,8 @@ class DisplaysHubPage extends StatefulWidget {
 }
 
 class _DisplaysHubPageState extends State<DisplaysHubPage> {
-  late final SessionController _controller;
-  final _api = ApiClient();
+  final SessionController _controller = rpcSessionController;
+  final ApiClient _api = rpcApiClient;
   String? _checkInToken;
   int? _sessionId;
   int _courtCount = 4;
@@ -34,7 +35,7 @@ class _DisplaysHubPageState extends State<DisplaysHubPage> {
   @override
   void initState() {
     super.initState();
-    _controller = SessionController();
+    _controller.retain();
     _controller.setAdminPin(widget.adminPin ?? rpcAdminPinController.pin);
     _controller.initialize(readOnly: true).then((_) {
       if (!mounted) return;
@@ -66,7 +67,7 @@ class _DisplaysHubPageState extends State<DisplaysHubPage> {
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller.release();
     super.dispose();
   }
 

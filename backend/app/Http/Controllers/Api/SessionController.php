@@ -47,10 +47,13 @@ class SessionController extends Controller
         $session = PlaySession::query()->where('status', 'active')->first();
 
         if (! $session) {
-            return response()->json(['message' => 'No active session'], 404);
+            return response()->json($this->stateService->buildActiveEmptyCached());
         }
 
-        return response()->json($this->stateService->buildActiveCached($session));
+        return response()->json(array_merge(
+            ['active' => true],
+            $this->stateService->buildActiveCached($session),
+        ));
     }
 
     public function state(PlaySession $session): JsonResponse

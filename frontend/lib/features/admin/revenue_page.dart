@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/decor/rpc_decor_empty_state.dart';
 import '../../core/admin_nav.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/api_client.dart';
+import '../../core/config.dart';
 import '../../core/models.dart';
 import '../../core/theme/rpc_palette.dart';
 import '../../core/theme/rpc_spacing.dart';
@@ -26,7 +28,10 @@ class RevenuePage extends StatefulWidget {
 }
 
 class _RevenuePageState extends State<RevenuePage> {
-  late final ApiClient _api;
+  static RevenueSummary? _cachedSummary;
+  static DateTime? _cachedAt;
+
+  final ApiClient _api = rpcApiClient;
   RevenueSummary? _summary;
   bool _loading = true;
   String? _error;
@@ -35,18 +40,34 @@ class _RevenuePageState extends State<RevenuePage> {
   void initState() {
     super.initState();
     final pin = widget.adminPin ?? rpcAdminPinController.pin;
-    _api = ApiClient(adminPin: pin);
-    _load();
+    _api.setAdminPin(pin);
+
+    final cached = _cachedSummary;
+    final cacheFresh = cached != null &&
+        _cachedAt != null &&
+        DateTime.now().difference(_cachedAt!) < AppConfig.screenCacheTtl;
+    if (cacheFresh) {
+      _summary = cached;
+      _loading = false;
+    }
+
+    _load(silent: cacheFresh);
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false, bool force = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = _summary == null;
+        _error = null;
+      });
+    }
     try {
-      final summary = await _api.getRevenue();
-      if (mounted) setState(() => _summary = summary);
+      final summary = await _api.getRevenue(force: force);
+      if (mounted) {
+        setState(() => _summary = summary);
+        _cachedSummary = summary;
+        _cachedAt = DateTime.now();
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -69,7 +90,7 @@ class _RevenuePageState extends State<RevenuePage> {
       actions: [
         IconButton(
           tooltip: 'Refresh',
-          onPressed: _loading ? null : _load,
+          onPressed: _loading ? null : () => _load(force: true),
           icon: const Icon(Icons.refresh_rounded),
         ),
       ],

@@ -6,7 +6,9 @@ import 'tournament_bracket_view.dart';
 import 'tournament_admin_register_panel.dart';
 import '../../core/admin_pin_controller.dart';
 import '../../core/api_client.dart';
+import '../../core/config.dart';
 import '../../core/models.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/tournament_models.dart';
 import '../../core/theme/rpc_palette.dart';
 import '../../core/theme/rpc_spacing.dart';
@@ -34,7 +36,9 @@ class TournamentPage extends StatefulWidget {
 }
 
 class _TournamentPageState extends State<TournamentPage> {
-  late final ApiClient _api;
+  static _TournamentPageSnapshot? _snapshot;
+
+  final ApiClient _api = rpcApiClient;
   List<TournamentListItem> _tournaments = [];
   List<TournamentCategoryDivisionGroup> _categoryGroups = [];
   TournamentState? _active;
@@ -47,22 +51,37 @@ class _TournamentPageState extends State<TournamentPage> {
   void initState() {
     super.initState();
     final pin = widget.adminPin ?? rpcAdminPinController.pin;
-    _api = ApiClient(adminPin: pin);
-    _load();
+    _api.setAdminPin(pin);
+
+    final cached = _snapshot;
+    if (cached != null && cached.isFresh) {
+      _tournaments = cached.tournaments;
+      _categoryGroups = cached.categoryGroups;
+      _active = cached.active;
+      _loading = false;
+    }
+
+    _load(silent: cached != null && cached.isFresh);
   }
 
-  Future<void> _load({int? selectId}) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({
+    int? selectId,
+    bool silent = false,
+    bool force = false,
+  }) async {
+    if (!silent) {
+      setState(() {
+        _loading = _tournaments.isEmpty && _active == null;
+        _error = null;
+      });
+    }
     try {
-      final list = await _api.listTournaments();
+      final list = await _api.listTournaments(force: force);
       TournamentState? active;
       if (selectId != null) {
-        active = await _api.getTournament(selectId);
+        active = await _api.getTournament(selectId, force: force);
       } else if (_active != null) {
-        active = await _api.getTournament(_active!.tournament.id);
+        active = await _api.getTournament(_active!.tournament.id, force: force);
       }
       if (mounted) {
         setState(() {
@@ -70,6 +89,11 @@ class _TournamentPageState extends State<TournamentPage> {
           _categoryGroups = list.categoryGroups;
           _active = active;
         });
+        _snapshot = _TournamentPageSnapshot(
+          tournaments: _tournaments,
+          categoryGroups: _categoryGroups,
+          active: _active,
+        );
       }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -521,7 +545,7 @@ class _TournamentPageState extends State<TournamentPage> {
           ),
         IconButton(
           tooltip: 'Refresh',
-          onPressed: _loading ? null : () => _load(),
+          onPressed: _loading ? null : () => _load(force: true),
           icon: const Icon(Icons.refresh_rounded),
         ),
         if (_active == null)
@@ -3025,4 +3049,20 @@ class _ScoreTeamField extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TournamentPageSnapshot {
+  _TournamentPageSnapshot({
+    required this.tournaments,
+    required this.categoryGroups,
+    required this.active,
+  }) : loadedAt = DateTime.now();
+
+  final List<TournamentListItem> tournaments;
+  final List<TournamentCategoryDivisionGroup> categoryGroups;
+  final TournamentState? active;
+  final DateTime loadedAt;
+
+  bool get isFresh =>
+      DateTime.now().difference(loadedAt) < AppConfig.screenCacheTtl;
 }

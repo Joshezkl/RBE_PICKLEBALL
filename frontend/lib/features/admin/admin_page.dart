@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../core/config.dart';
 import '../../core/match_modes.dart';
 import '../../core/models.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/session_controller.dart';
 import '../../core/theme/rpc_palette.dart';
 import '../../core/theme/rpc_typography.dart';
@@ -40,7 +42,7 @@ class AdminPage extends StatefulWidget {
 }
 
 class _AdminPageState extends State<AdminPage> {
-  late final SessionController _controller;
+  final SessionController _controller = rpcSessionController;
   late final TextEditingController _pinController;
   final _sessionNameController = TextEditingController();
   final _sessionFeeController = TextEditingController(text: '30');
@@ -56,6 +58,8 @@ class _AdminPageState extends State<AdminPage> {
   List<SessionPreset> _presets = [];
   int? _selectedPresetId;
   bool _loadingPresets = false;
+  static List<SessionPreset>? _cachedPresets;
+  static DateTime? _cachedPresetsAt;
   int _mobileTab = 0;
 
   @override
@@ -64,7 +68,7 @@ class _AdminPageState extends State<AdminPage> {
     _autoSessionName = MatchModes.sessionNameFor(_selectedMatchMode);
     _sessionNameController.text = _autoSessionName;
     _pinController = TextEditingController(text: rpcAdminPinController.pin);
-    _controller = SessionController();
+    _controller.retain();
     _controller.setAdminPin(rpcAdminPinController.pin);
     rpcAdminPinController.addListener(_onAdminPinChanged);
     _controller.initialize();
@@ -80,12 +84,25 @@ class _AdminPageState extends State<AdminPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _loadPresets() async {
+  Future<void> _loadPresets({bool force = false}) async {
+    final cacheFresh = !force &&
+        _cachedPresetsAt != null &&
+        _cachedPresets != null &&
+        DateTime.now().difference(_cachedPresetsAt!) < AppConfig.screenCacheTtl;
+
+    if (cacheFresh) {
+      if (mounted) setState(() => _presets = _cachedPresets!);
+      return;
+    }
+
     setState(() => _loadingPresets = true);
     try {
-      _presets = await _controller.api.getSessionPresets();
+      final presets = await _controller.api.getSessionPresets(force: force);
+      _cachedPresets = presets;
+      _cachedPresetsAt = DateTime.now();
+      if (mounted) setState(() => _presets = presets);
     } catch (_) {
-      _presets = [];
+      if (mounted) setState(() => _presets = []);
     } finally {
       if (mounted) setState(() => _loadingPresets = false);
     }
@@ -118,7 +135,7 @@ class _AdminPageState extends State<AdminPage> {
   void dispose() {
     rpcAdminPinController.removeListener(_onAdminPinChanged);
     _controller.removeListener(_onControllerUpdate);
-    _controller.dispose();
+    _controller.release();
     _pinController.dispose();
     _sessionNameController.dispose();
     _sessionFeeController.dispose();

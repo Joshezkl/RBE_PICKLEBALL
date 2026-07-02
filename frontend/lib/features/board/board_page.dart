@@ -4,6 +4,7 @@ import '../../core/decor/rpc_decor_empty_state.dart';
 import '../../core/decor/rpc_decor_theme.dart';
 import '../../core/match_modes.dart';
 import '../../core/models.dart';
+import '../../core/rpc_session_controller.dart';
 import '../../core/session_controller.dart';
 import '../../core/theme/rpc_palette.dart';
 import '../../core/theme/rpc_typography.dart';
@@ -24,12 +25,12 @@ class BoardPage extends StatefulWidget {
 }
 
 class _BoardPageState extends State<BoardPage> {
-  late final SessionController _controller;
+  final SessionController _controller = rpcSessionController;
 
   @override
   void initState() {
     super.initState();
-    _controller = SessionController();
+    _controller.retain();
     _controller.initialize(readOnly: true);
     _controller.addListener(_onUpdate);
   }
@@ -39,7 +40,7 @@ class _BoardPageState extends State<BoardPage> {
   @override
   void dispose() {
     _controller.removeListener(_onUpdate);
-    _controller.dispose();
+    _controller.release();
     super.dispose();
   }
 
