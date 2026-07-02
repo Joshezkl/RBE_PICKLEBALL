@@ -71,10 +71,13 @@ class TournamentController extends Controller
             ->first();
 
         if ($tournament === null) {
-            return response()->json(['message' => 'No live tournament'], 404);
+            return response()->json($this->stateService->buildActiveEmptyCached());
         }
 
-        return response()->json($this->stateService->buildCached($tournament));
+        return response()->json(array_merge(
+            ['active' => true],
+            $this->stateService->buildActiveCached($tournament),
+        ));
     }
 
     public function update(Request $request, Tournament $tournament): JsonResponse

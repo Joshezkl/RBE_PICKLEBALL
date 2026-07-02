@@ -54,6 +54,49 @@ class TournamentStateService
     }
 
     /**
+     * Cached full state for the live tournament (/tournaments/active).
+     */
+    public function buildActiveCached(Tournament $tournament): array
+    {
+        $ttl = (int) config('rpc.cache.tournament_ttl', 5);
+
+        if ($ttl <= 0) {
+            return $this->build($tournament);
+        }
+
+        return Cache::remember(
+            self::activeCacheKey(),
+            $ttl,
+            fn () => $this->build($tournament),
+        );
+    }
+
+    /**
+     * Cached "no live tournament" payload for /tournaments/active.
+     *
+     * @return array{active: false, message: string}
+     */
+    public function buildActiveEmptyCached(): array
+    {
+        $payload = [
+            'active' => false,
+            'message' => 'No live tournament',
+        ];
+
+        $ttl = (int) config('rpc.cache.tournament_ttl', 5);
+
+        if ($ttl <= 0) {
+            return $payload;
+        }
+
+        return Cache::remember(
+            self::activeCacheKey(),
+            $ttl,
+            fn () => $payload,
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function build(Tournament $tournament): array

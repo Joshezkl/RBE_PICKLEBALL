@@ -1858,4 +1858,14 @@ class TournamentTest extends TestCase
         $this->assertCount(2, $response->json('pairs'));
         $this->assertCount(2, $response->json('state.categories.0.teams'));
     }
+
+    public function test_active_tournament_endpoint_returns_ok_when_none_live(): void
+    {
+        $this->getJson('/api/tournaments/active')
+            ->assertOk()
+            ->assertJson([
+                'active' => false,
+                'message' => 'No live tournament',
+            ]);
+    }
 }

@@ -76,6 +76,7 @@ class ApiClient {
   void _invalidateTournamentCaches({int? tournamentId}) {
     DataCache.invalidate('tournaments');
     DataCache.invalidate('tournaments/active');
+    DataCache.invalidate('tournaments/active:empty');
     if (tournamentId != null) {
       DataCache.invalidate('tournaments/$tournamentId');
     } else {
@@ -947,20 +948,49 @@ class ApiClient {
   }
 
   Future<TournamentState?> getActiveTournament({bool force = false}) async {
-    if (force) DataCache.invalidate('tournaments/active');
+    if (force) {
+      DataCache.invalidate('tournaments/active');
+      DataCache.invalidate('tournaments/active:empty');
+    }
 
-    return _cachedGet('tournaments/active', () async {
-      final response = await _getPoll(
-        Uri.parse('${AppConfig.apiBaseUrl}/tournaments/active'),
-      );
-      if (response.statusCode == 404) {
-        return null;
-      }
-      _throwOnError(response);
-      return TournamentState.fromJson(
-        jsonDecode(response.body) as Map<String, dynamic>,
-      );
-    });
+    if (!force &&
+        DataCache.get<bool>('tournaments/active:empty', AppConfig.screenCacheTtl) ==
+            true) {
+      return null;
+    }
+
+    final cached = DataCache.get<TournamentState>(
+      'tournaments/active',
+      AppConfig.screenCacheTtl,
+    );
+    if (!force && cached != null) {
+      return cached;
+    }
+
+    final response = await _getPoll(
+      Uri.parse('${AppConfig.apiBaseUrl}/tournaments/active'),
+    );
+
+    // Legacy backends returned 404 when no tournament was live.
+    if (response.statusCode == 404) {
+      DataCache.set('tournaments/active:empty', true);
+      DataCache.invalidate('tournaments/active');
+      return null;
+    }
+
+    _throwOnError(response);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+    if (body['active'] == false) {
+      DataCache.set('tournaments/active:empty', true);
+      DataCache.invalidate('tournaments/active');
+      return null;
+    }
+
+    final state = TournamentState.fromJson(body);
+    DataCache.set('tournaments/active', state);
+    DataCache.invalidate('tournaments/active:empty');
+    return state;
   }
 
   Future<TournamentState> createTournament({
