@@ -108,6 +108,15 @@ function rbe_vercel_env_map(): array
         $values['DB_CONNECTION'] = 'mysql';
     }
 
+    // Serverless defaults: reuse warm DB connections and avoid DB-backed cache.
+    if (($values['DB_PERSISTENT'] ?? '') === '') {
+        $values['DB_PERSISTENT'] = 'true';
+    }
+
+    if (($values['CACHE_STORE'] ?? '') === '' || ($values['CACHE_STORE'] ?? '') === 'database') {
+        $values['CACHE_STORE'] = 'file';
+    }
+
     if (($values['DB_PORT'] ?? '') === '') {
         $values['DB_PORT'] = str_contains((string) ($values['DB_HOST'] ?? ''), 'tidbcloud.com')
             ? '4000'

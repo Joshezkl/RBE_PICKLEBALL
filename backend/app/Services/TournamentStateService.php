@@ -9,6 +9,7 @@ use App\Models\TournamentTeam;
 use App\Support\TournamentCategory as TournamentCategorySupport;
 use App\Support\TournamentGroup;
 use App\Support\TournamentSkillLevel;
+use Illuminate\Support\Facades\Cache;
 
 class TournamentStateService
 {
@@ -17,6 +18,40 @@ class TournamentStateService
         private TournamentScheduleService $scheduleService,
         private TournamentCourtService $courtService,
     ) {}
+
+    public static function cacheKey(int $tournamentId): string
+    {
+        return "rpc:tournament:state:{$tournamentId}";
+    }
+
+    public static function activeCacheKey(): string
+    {
+        return 'rpc:tournament:active';
+    }
+
+    public static function invalidate(int $tournamentId): void
+    {
+        Cache::forget(self::cacheKey($tournamentId));
+        Cache::forget(self::activeCacheKey());
+    }
+
+    /**
+     * Cached tournament state for high-frequency read endpoints.
+     */
+    public function buildCached(Tournament $tournament): array
+    {
+        $ttl = (int) config('rpc.cache.tournament_ttl', 5);
+
+        if ($ttl <= 0) {
+            return $this->build($tournament);
+        }
+
+        return Cache::remember(
+            self::cacheKey($tournament->id),
+            $ttl,
+            fn () => $this->build($tournament),
+        );
+    }
 
     /**
      * @return array<string, mixed>

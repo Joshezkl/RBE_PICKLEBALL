@@ -32,5 +32,8 @@ return [
         // Leaderboards only change when a match is scored; they are also
         // invalidated on write, so a longer TTL is safe.
         'leaderboard_ttl' => (int) env('RPC_LEADERBOARD_CACHE_TTL', 60),
+
+        // Tournament display polling (/tournaments/active).
+        'tournament_ttl' => (int) env('RPC_TOURNAMENT_CACHE_TTL', 5),
     ],
 ];

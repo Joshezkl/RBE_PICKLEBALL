@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'adaptive_poll_timer.dart';
 import 'api_client.dart';
+import 'config.dart';
 import 'tournament_models.dart';
 
 class TournamentDisplayController extends ChangeNotifier {
@@ -23,8 +24,8 @@ class TournamentDisplayController extends ChangeNotifier {
   Future<void> initialize() async {
     await refresh();
     _pollTimer = AdaptivePollTimer(
-      foregroundInterval: const Duration(seconds: 8),
-      backgroundInterval: const Duration(seconds: 20),
+      foregroundInterval: AppConfig.pollForegroundInterval,
+      backgroundInterval: AppConfig.pollBackgroundInterval,
       onPoll: refresh,
     )..start();
   }

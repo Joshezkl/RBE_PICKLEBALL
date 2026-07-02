@@ -42,14 +42,18 @@ class MatchController extends Controller
                 $validated['score_a'],
                 $validated['score_b'],
             );
-            $this->challengeCourtService->handleMatchFinished($session->fresh(), $match->fresh());
-            $this->courtService->tryAutoAssignAvailableCourts($session->fresh());
-            $this->challengeCourtService->tryAutoAssign($session->fresh());
+
+            $session = $session->fresh();
+            $match = $match->fresh();
+
+            $this->challengeCourtService->handleMatchFinished($session, $match);
+            $this->courtService->tryAutoAssignAvailableCourts($session);
+            $this->challengeCourtService->tryAutoAssign($session);
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json($this->broadcastState($session->fresh()));
+        return response()->json($this->broadcastState($session));
     }
 
     public function assignNext(PlaySession $session, Court $court): JsonResponse
@@ -102,12 +106,13 @@ class MatchController extends Controller
 
         try {
             $this->courtService->removePlayerFromCourt($session, $court, $player);
-            $this->courtService->tryAutoAssignAvailableCourts($session->fresh());
+            $session = $session->fresh();
+            $this->courtService->tryAutoAssignAvailableCourts($session);
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json($this->broadcastState($session->fresh()));
+        return response()->json($this->broadcastState($session));
     }
 
     public function swapPlayers(Request $request, PlaySession $session, Court $court): JsonResponse

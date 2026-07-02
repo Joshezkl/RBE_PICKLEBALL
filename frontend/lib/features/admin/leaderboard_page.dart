@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/adaptive_poll_timer.dart';
 import '../../core/api_client.dart';
+import '../../core/config.dart';
 import '../../core/models.dart';
 import '../../core/theme/rpc_spacing.dart';
 import '../../core/widgets/leaderboard_view.dart';
@@ -77,9 +78,9 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
         : LeaderboardSortMode.overall;
     _loadAll(silent: false);
     _pollTimer = AdaptivePollTimer(
-      foregroundInterval: const Duration(seconds: 8),
-      backgroundInterval: const Duration(seconds: 20),
-      onPoll: () => _loadAll(silent: true),
+      foregroundInterval: AppConfig.pollForegroundInterval,
+      backgroundInterval: AppConfig.pollBackgroundInterval,
+      onPoll: () => _loadActiveScope(silent: true),
     )..start();
   }
 
@@ -87,6 +88,51 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   void dispose() {
     _pollTimer?.stop();
     super.dispose();
+  }
+
+  Future<void> _loadActiveScope({required bool silent}) async {
+    if (!mounted) return;
+
+    try {
+      switch (_sortMode) {
+        case LeaderboardSortMode.overall:
+          final entries = await _api.getAllTimeLeaderboard();
+          if (!mounted) return;
+          setState(() => _overallEntries = entries);
+        case LeaderboardSortMode.thisMonth:
+          final monthly = await _api.getMonthlyLeaderboard();
+          if (!mounted) return;
+          setState(() {
+            _monthlyEntries = monthly.entries;
+            _monthlyLabel = monthly.label;
+          });
+        case LeaderboardSortMode.season:
+          final season =
+              await _api.getSeasonLeaderboard(year: _seasonYear);
+          if (!mounted) return;
+          setState(() {
+            _seasonEntries = season.entries;
+            _seasonLabel = season.label;
+          });
+        case LeaderboardSortMode.currentSession:
+          final session = await _loadSessionEntries();
+          if (!mounted) return;
+          setState(() {
+            _sessionEntries = session.entries;
+            _sessionName = session.sessionName;
+            _sessionId = session.sessionId;
+            _sessionAvailable = session.available;
+            if (!_sessionAvailable &&
+                _sortMode == LeaderboardSortMode.currentSession) {
+              _sortMode = LeaderboardSortMode.overall;
+            }
+          });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _loadAll({required bool silent}) async {

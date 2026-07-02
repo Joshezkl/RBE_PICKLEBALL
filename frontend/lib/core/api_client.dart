@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 
@@ -18,11 +19,13 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({http.Client? client, String? adminPin})
-      : _client = client ?? http.Client(),
+  ApiClient({http.Client? pollClient, http.Client? actionClient, String? adminPin})
+      : _pollClient = pollClient ?? http.Client(),
+        _actionClient = actionClient ?? http.Client(),
         _adminPin = adminPin;
 
-  final http.Client _client;
+  final http.Client _pollClient;
+  final http.Client _actionClient;
   String? _adminPin;
 
   void setAdminPin(String? pin) => _adminPin = pin;
@@ -40,9 +43,8 @@ class ApiClient {
       };
 
   Future<SessionState> getActiveSession() async {
-    final response = await _client.get(
+    final response = await _getPoll(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/active'),
-      headers: _headers,
     );
     if (response.statusCode == 404) {
       throw ApiException('No active session', statusCode: 404);
@@ -54,9 +56,8 @@ class ApiClient {
   }
 
   Future<SessionState> getSessionState(int sessionId) async {
-    final response = await _client.get(
+    final response = await _getPoll(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/state'),
-      headers: _headers,
     );
     _throwOnError(response);
     return SessionState.fromJson(
@@ -65,9 +66,8 @@ class ApiClient {
   }
 
   Future<SessionState> getSessionStateLive(int sessionId) async {
-    final response = await _client.get(
+    final response = await _getPoll(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/live'),
-      headers: _headers,
     );
     _throwOnError(response);
     return SessionState.fromJson(
@@ -84,7 +84,7 @@ class ApiClient {
     bool requirePayment = false,
     int sessionFeeCents = 3000,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions'),
       headers: _headers,
       body: jsonEncode({
@@ -110,7 +110,7 @@ class ApiClient {
     String? gender,
     String? paymentAction,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/players'),
       headers: _headers,
       body: jsonEncode({
@@ -130,7 +130,7 @@ class ApiClient {
   }
 
   Future<SessionState> removePlayer(int sessionId, int playerId) async {
-    final response = await _client.delete(
+    final response = await _actionClient.delete(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/players/$playerId',
       ),
@@ -147,7 +147,7 @@ class ApiClient {
     int playerId,
     String name,
   ) async {
-    final response = await _client.patch(
+    final response = await _actionClient.patch(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/players/$playerId',
       ),
@@ -165,7 +165,7 @@ class ApiClient {
     required String queueType,
     required int position,
   }) async {
-    final response = await _client.patch(
+    final response = await _actionClient.patch(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/queues/move'),
       headers: _headers,
       body: jsonEncode({
@@ -186,7 +186,7 @@ class ApiClient {
     int scoreA,
     int scoreB,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/matches/$matchId/score',
       ),
@@ -200,7 +200,7 @@ class ApiClient {
   }
 
   Future<SessionState> assignNextUp(int sessionId, int courtId) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/courts/$courtId/assign-next',
       ),
@@ -216,7 +216,7 @@ class ApiClient {
     int sessionId,
     List<int> courtNumbers,
   ) async {
-    final response = await _client.patch(
+    final response = await _actionClient.patch(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/challenge-court/configure',
       ),
@@ -230,7 +230,7 @@ class ApiClient {
   }
 
   Future<SessionState> openChallengeCourt(int sessionId) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/challenge-court/open',
       ),
@@ -243,7 +243,7 @@ class ApiClient {
   }
 
   Future<SessionState> closeChallengeCourt(int sessionId) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/challenge-court/close',
       ),
@@ -260,7 +260,7 @@ class ApiClient {
     required int playerId,
     required int partnerId,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/challenge-court/join',
       ),
@@ -280,7 +280,7 @@ class ApiClient {
     int sessionId,
     int teamId,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/challenge-court/teams/$teamId/return',
       ),
@@ -296,7 +296,7 @@ class ApiClient {
     int sessionId,
     int teamId,
   ) async {
-    final response = await _client.delete(
+    final response = await _actionClient.delete(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/challenge-court/teams/$teamId',
       ),
@@ -312,7 +312,7 @@ class ApiClient {
     int sessionId,
     int courtId,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/courts/$courtId/assign-challenge-next',
       ),
@@ -329,7 +329,7 @@ class ApiClient {
     int courtId,
     int playerId,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/courts/$courtId/players/$playerId/remove',
       ),
@@ -347,7 +347,7 @@ class ApiClient {
     int playerAId,
     int playerBId,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/courts/$courtId/swap-players',
       ),
@@ -370,7 +370,7 @@ class ApiClient {
     int? sessionFeeCents,
     int? courtCount,
   }) async {
-    final response = await _client.patch(
+    final response = await _actionClient.patch(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/settings'),
       headers: _headers,
       body: jsonEncode({
@@ -387,7 +387,7 @@ class ApiClient {
   }
 
   Future<List<SessionPreset>> getSessionPresets() async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/session-presets'),
       headers: _headers,
     );
@@ -405,7 +405,7 @@ class ApiClient {
     required int courtCount,
     bool autoAssignEnabled = false,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/session-presets'),
       headers: _headers,
       body: jsonEncode({
@@ -423,7 +423,7 @@ class ApiClient {
   }
 
   Future<void> deleteSessionPreset(int presetId) async {
-    final response = await _client.delete(
+    final response = await _actionClient.delete(
       Uri.parse('${AppConfig.apiBaseUrl}/session-presets/$presetId'),
       headers: _headers,
     );
@@ -435,7 +435,7 @@ class ApiClient {
     int courtId,
     List<int> playerIds,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/courts/$courtId/assign',
       ),
@@ -451,7 +451,7 @@ class ApiClient {
   Future<({SessionReport report, SessionState state})> endSession(
     int sessionId,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/end'),
       headers: _headers,
     );
@@ -464,7 +464,7 @@ class ApiClient {
   }
 
   Future<SessionReport> getReport(int sessionId) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/report'),
       headers: _headers,
     );
@@ -478,7 +478,7 @@ class ApiClient {
     required int year,
     required int month,
   }) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/calendar?year=$year&month=$month',
       ),
@@ -500,7 +500,7 @@ class ApiClient {
   }
 
   Future<List<SessionHistorySummary>> getSessionsOnDate(String date) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/history?date=$date'),
       headers: _headers,
     );
@@ -512,7 +512,7 @@ class ApiClient {
   }
 
   Future<SessionHistoryDetail> getSessionHistory(int sessionId) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/history'),
       headers: _headers,
     );
@@ -530,7 +530,7 @@ class ApiClient {
         if (search != null && search.isNotEmpty) 'search': search,
       },
     );
-    final response = await _client.get(uri, headers: _headers);
+    final response = await _actionClient.get(uri, headers: _headers);
     _throwOnError(response);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (
@@ -546,7 +546,7 @@ class ApiClient {
     required String skillLevel,
     required String gender,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/players'),
       headers: _headers,
       body: jsonEncode({
@@ -561,7 +561,7 @@ class ApiClient {
   }
 
   Future<void> deleteClubPlayer(int clubPlayerId) async {
-    final response = await _client.delete(
+    final response = await _actionClient.delete(
       Uri.parse('${AppConfig.apiBaseUrl}/players/$clubPlayerId'),
       headers: _headers,
     );
@@ -574,7 +574,7 @@ class ApiClient {
     String? gender,
     String? paymentAction,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/session/join'),
       headers: _headers,
       body: jsonEncode({
@@ -594,7 +594,7 @@ class ApiClient {
   }
 
   Future<SessionState> removeFromSession({int? clubPlayerId}) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/session/remove'),
       headers: _headers,
       body: jsonEncode({
@@ -608,7 +608,7 @@ class ApiClient {
   }
 
   Future<List<LeaderboardEntry>> getAllTimeLeaderboard() async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/all-time'),
       headers: _headers,
     );
@@ -621,7 +621,7 @@ class ApiClient {
 
   Future<({int sessionId, String sessionName, List<LeaderboardEntry> entries})>
       getSessionLeaderboard(int sessionId) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/session/$sessionId'),
       headers: _headers,
     );
@@ -644,7 +644,7 @@ class ApiClient {
 
     final uri = Uri.parse('${AppConfig.apiBaseUrl}/leaderboard/monthly')
         .replace(queryParameters: query.isEmpty ? null : query);
-    final response = await _client.get(uri, headers: _headers);
+    final response = await _actionClient.get(uri, headers: _headers);
     _throwOnError(response);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (
@@ -663,7 +663,7 @@ class ApiClient {
         : Uri.parse(
             '${AppConfig.apiBaseUrl}/leaderboard/season?year=$year',
           );
-    final response = await _client.get(uri, headers: _headers);
+    final response = await _actionClient.get(uri, headers: _headers);
     _throwOnError(response);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (
@@ -675,7 +675,7 @@ class ApiClient {
   }
 
   Future<PlayerProfileDetail> getPlayerProfile(int clubPlayerId) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/players/$clubPlayerId'),
       headers: _headers,
     );
@@ -688,7 +688,7 @@ class ApiClient {
   Future<({String filename, String content})> exportSessionReport(
     int sessionId,
   ) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/export'),
       headers: {
         if (_resolvedAdminPin.isNotEmpty) 'X-Admin-Pin': _resolvedAdminPin,
@@ -708,7 +708,7 @@ class ApiClient {
     int clubPlayerId, {
     String method = 'cash',
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/registrations/$clubPlayerId/mark-paid',
       ),
@@ -725,7 +725,7 @@ class ApiClient {
     int clubPlayerId, {
     String? notes,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/sessions/$sessionId/registrations/$clubPlayerId/mark-waived',
       ),
@@ -751,7 +751,7 @@ class ApiClient {
 
     final uri = Uri.parse('${AppConfig.apiBaseUrl}/admin/revenue')
         .replace(queryParameters: query.isEmpty ? null : query);
-    final response = await _client.get(uri, headers: _headers);
+    final response = await _actionClient.get(uri, headers: _headers);
     _throwOnError(response);
     return RevenueSummary.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
@@ -759,7 +759,7 @@ class ApiClient {
   }
 
   Future<TournamentListResponse> listTournaments() async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments'),
       headers: _headers,
     );
@@ -770,7 +770,7 @@ class ApiClient {
   }
 
   Future<TournamentState> getTournament(int tournamentId) async {
-    final response = await _client.get(
+    final response = await _actionClient.get(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments/$tournamentId'),
       headers: _headers,
     );
@@ -781,9 +781,8 @@ class ApiClient {
   }
 
   Future<TournamentState?> getActiveTournament() async {
-    final response = await _client.get(
+    final response = await _getPoll(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments/active'),
-      headers: _headers,
     );
     if (response.statusCode == 404) {
       return null;
@@ -800,7 +799,7 @@ class ApiClient {
     required List<String> categories,
     int courtCount = 4,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments'),
       headers: _headers,
       body: jsonEncode({
@@ -823,7 +822,7 @@ class ApiClient {
     List<String>? categories,
     int? courtCount,
   }) async {
-    final response = await _client.patch(
+    final response = await _actionClient.patch(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments/$tournamentId'),
       headers: _headers,
       body: jsonEncode({
@@ -840,7 +839,7 @@ class ApiClient {
   }
 
   Future<TournamentState> startTournament(int tournamentId) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments/$tournamentId/start'),
       headers: _headers,
     );
@@ -865,7 +864,7 @@ class ApiClient {
       body['player_ids'] = playerIds ?? [];
     }
 
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/categories/${Uri.encodeComponent(categoryKey)}/teams',
       ),
@@ -890,7 +889,7 @@ class ApiClient {
       if (genders != null) 'genders': genders,
     };
 
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/categories/${Uri.encodeComponent(categoryKey)}/draw-lots',
       ),
@@ -909,7 +908,7 @@ class ApiClient {
   }
 
   Future<void> deleteTournament(int tournamentId) async {
-    final response = await _client.delete(
+    final response = await _actionClient.delete(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments/$tournamentId'),
       headers: _headers,
     );
@@ -920,7 +919,7 @@ class ApiClient {
     int tournamentId,
     int teamId,
   ) async {
-    final response = await _client.delete(
+    final response = await _actionClient.delete(
       Uri.parse('${AppConfig.apiBaseUrl}/tournaments/$tournamentId/teams/$teamId'),
       headers: _headers,
     );
@@ -935,7 +934,7 @@ class ApiClient {
     int clubPlayerId,
     String name,
   ) async {
-    final response = await _client.patch(
+    final response = await _actionClient.patch(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/players/$clubPlayerId',
       ),
@@ -954,7 +953,7 @@ class ApiClient {
     required int scoreA,
     required int scoreB,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/matches/$matchId/score',
       ),
@@ -974,7 +973,7 @@ class ApiClient {
     int tournamentId,
     int matchId,
   ) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/matches/$matchId/activate-court',
       ),
@@ -991,7 +990,7 @@ class ApiClient {
     int matchId, {
     required int courtNumber,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/matches/$matchId/assign-court',
       ),
@@ -1009,7 +1008,7 @@ class ApiClient {
     int matchId, {
     required int courtNumber,
   }) async {
-    final response = await _client.post(
+    final response = await _actionClient.post(
       Uri.parse(
         '${AppConfig.apiBaseUrl}/tournaments/$tournamentId/matches/$matchId/replace-court',
       ),
@@ -1019,6 +1018,32 @@ class ApiClient {
     _throwOnError(response);
     return TournamentState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<http.Response> _getPoll(Uri uri) async {
+    final started = Stopwatch()..start();
+    final response = await _pollClient.get(uri, headers: _headers);
+    _logRequestTiming('GET', uri, response, started);
+    return response;
+  }
+
+  void _logRequestTiming(
+    String method,
+    Uri uri,
+    http.Response response,
+    Stopwatch started,
+  ) {
+    final clientMs = started.elapsedMilliseconds;
+    final serverMs = int.tryParse(response.headers['x-response-time-ms'] ?? '');
+    if (clientMs < 1000 && (serverMs == null || serverMs < 1000)) {
+      return;
+    }
+
+    developer.log(
+      '$method ${uri.path} client=${clientMs}ms'
+      '${serverMs != null ? ' server=${serverMs}ms' : ''}',
+      name: 'ApiClient',
     );
   }
 

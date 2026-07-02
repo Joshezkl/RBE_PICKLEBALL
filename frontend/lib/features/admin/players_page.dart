@@ -28,7 +28,7 @@ class _PlayersPageState extends State<PlayersPage> {
     _api = ApiClient(adminPin: pin);
     _controller = SessionController(apiClient: _api);
     _controller.setAdminPin(pin);
-    _controller.initialize();
+    _controller.initialize(readOnly: true);
     _controller.addListener(_onUpdate);
   }
 

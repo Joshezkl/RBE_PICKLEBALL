@@ -19,6 +19,16 @@ class AdaptivePollTimer {
   Timer? _timer;
   bool _liveUpdatesActive = false;
   bool _inFlight = false;
+  bool _paused = false;
+
+  void pause() => _paused = true;
+
+  void resume() {
+    if (!_paused) return;
+    _paused = false;
+  }
+
+  bool get isPaused => _paused;
 
   void start() {
     stop();
@@ -56,7 +66,7 @@ class AdaptivePollTimer {
   }
 
   Future<void> _tick() async {
-    if (_inFlight) {
+    if (_paused || _inFlight) {
       return;
     }
 

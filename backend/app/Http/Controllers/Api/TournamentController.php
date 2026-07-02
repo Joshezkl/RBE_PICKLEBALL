@@ -60,7 +60,7 @@ class TournamentController extends Controller
 
     public function show(Tournament $tournament): JsonResponse
     {
-        return response()->json($this->stateService->build($tournament));
+        return response()->json($this->stateService->buildCached($tournament));
     }
 
     public function active(): JsonResponse
@@ -74,7 +74,7 @@ class TournamentController extends Controller
             return response()->json(['message' => 'No live tournament'], 404);
         }
 
-        return response()->json($this->stateService->build($tournament));
+        return response()->json($this->stateService->buildCached($tournament));
     }
 
     public function update(Request $request, Tournament $tournament): JsonResponse

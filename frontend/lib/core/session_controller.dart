@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'admin_pin_controller.dart';
 import 'adaptive_poll_timer.dart';
 import 'api_client.dart';
+import 'config.dart';
 import 'models.dart';
 import 'websocket_service.dart';
 
@@ -26,9 +27,10 @@ class SessionController extends ChangeNotifier {
 
   AdaptivePollTimer? _pollTimer;
   bool _readOnlyPolling = false;
-  int _adminFullRefreshPolls = 0;
+  bool _mutating = false;
 
   bool get hasActiveSession => state?.session.isActive ?? false;
+  bool get mutating => _mutating;
 
   void setAdminPin(String pin) {
     adminPin = pin;
@@ -69,13 +71,12 @@ class SessionController extends ChangeNotifier {
     if (state == null) return;
 
     _readOnlyPolling = readOnly;
-    _adminFullRefreshPolls = 0;
     final sessionId = state!.session.id;
 
     _pollTimer = AdaptivePollTimer(
-      foregroundInterval: const Duration(seconds: 8),
-      backgroundInterval: const Duration(seconds: 20),
-      liveInterval: const Duration(seconds: 30),
+      foregroundInterval: AppConfig.pollForegroundInterval,
+      backgroundInterval: AppConfig.pollBackgroundInterval,
+      liveInterval: AppConfig.pollLiveInterval,
       onPoll: () => _pollSessionState(sessionId),
     )..start();
 
@@ -94,19 +95,18 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _pollSessionState(int sessionId) async {
+    if (_mutating) return;
+
     final previous = state;
     if (previous == null) return;
 
-    if (!_readOnlyPolling) {
-      _adminFullRefreshPolls++;
-    }
-
     final live = await api.getSessionStateLive(sessionId);
+
+    if (_mutating) return;
 
     if (!_readOnlyPolling) {
       final needsFullRefresh =
-          live.completedMatchCount != previous.completedMatchCount ||
-              _adminFullRefreshPolls % 6 == 0;
+          live.completedMatchCount != previous.completedMatchCount;
       if (needsFullRefresh) {
         state = await api.getSessionState(sessionId);
         notifyListeners();
@@ -310,8 +310,14 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<bool> _mutate(Future<SessionState> Function() action) async {
+    if (_mutating) return false;
+
+    _mutating = true;
+    _pollTimer?.pause();
     _syncAdminPinFromGlobal();
     error = null;
+    notifyListeners();
+
     try {
       state = await action();
       notifyListeners();
@@ -324,6 +330,9 @@ class SessionController extends ChangeNotifier {
       error = e.toString();
       notifyListeners();
       return false;
+    } finally {
+      _mutating = false;
+      _pollTimer?.resume();
     }
   }
 

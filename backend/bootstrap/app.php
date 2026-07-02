@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\RequestTiming::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

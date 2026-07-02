@@ -16,6 +16,11 @@ class LiveUpdateService {
     required void Function(SessionState state) onState,
     void Function(bool connected)? onConnectionChanged,
   }) {
+    if (!AppConfig.liveUpdatesEnabled) {
+      _markDisconnected(onConnectionChanged);
+      return;
+    }
+
     disconnect(onConnectionChanged: onConnectionChanged);
 
     final uri = Uri.parse(

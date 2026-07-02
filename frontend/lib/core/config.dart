@@ -58,6 +58,38 @@ class AppConfig {
     return 'ws';
   }
 
+  /// True when the app is served from Vercel or uses a same-origin /api path.
+  static bool get isDeployed {
+    final page = Uri.base;
+    if (page.host.endsWith('.vercel.app')) return true;
+    return apiBaseUrl.startsWith('/');
+  }
+
+  /// WebSocket live updates are only useful when a Reverb host is configured.
+  /// Avoid connecting to localhost:8080 on production deployments.
+  static bool get liveUpdatesEnabled {
+    final host = wsHost.trim().toLowerCase();
+    if (host.isEmpty) return false;
+
+    final isLocalHost = host.startsWith('localhost') ||
+        host.startsWith('127.0.0.1') ||
+        host.startsWith('[::1]');
+
+    if (!isLocalHost) return true;
+
+    final pageHost = Uri.base.host.toLowerCase();
+    return pageHost == 'localhost' || pageHost == '127.0.0.1';
+  }
+
+  static Duration get pollForegroundInterval =>
+      Duration(seconds: isDeployed ? 12 : 8);
+
+  static Duration get pollBackgroundInterval =>
+      Duration(seconds: isDeployed ? 30 : 20);
+
+  static Duration get pollLiveInterval =>
+      Duration(seconds: isDeployed ? 45 : 30);
+
   static String _resolveValue({
     required String runtimeKey,
     required String compileTime,

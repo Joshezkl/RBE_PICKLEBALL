@@ -991,7 +991,7 @@ class _AdminPageState extends State<AdminPage> {
   Widget _buildSessionControls(SessionState state) {
     return AutoAssignToggle.forLiveSession(
       value: state.session.autoAssignEnabled,
-      interactive: !_controller.loading,
+      interactive: !_controller.loading && !_controller.mutating,
       onChanged: _controller.loading
           ? null
           : (value) => _controller.setAutoAssignEnabled(value),

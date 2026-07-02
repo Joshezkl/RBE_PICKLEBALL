@@ -15,6 +15,7 @@ use App\Models\SessionPlayer;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Support\SessionCacheInvalidator;
+use App\Services\TournamentStateService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -34,9 +35,26 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        if (getenv('VERCEL')) {
+        if (getenv('VERCEL') || getenv('VERCEL_ENV')) {
+            $tmp = sys_get_temp_dir().'/rbe';
+            $cacheDir = "{$tmp}/cache/data";
+
+            if (! is_dir($cacheDir)) {
+                mkdir($cacheDir, 0755, true);
+            }
+
+            // Database-backed cache adds a remote round trip on every poll hit.
+            // File cache in /tmp persists across warm serverless invocations.
+            $cacheStore = env('CACHE_STORE', 'file');
+            if ($cacheStore === 'database') {
+                $cacheStore = 'file';
+            }
+
             config([
                 'logging.default' => 'stderr',
+                'cache.default' => $cacheStore,
+                'cache.stores.file.path' => $cacheDir,
+                'cache.stores.file.lock_path' => $cacheDir,
             ]);
         }
 
@@ -46,6 +64,7 @@ class AppServiceProvider extends ServiceProvider
         Route::bind('tournamentMatch', fn (string $value) => TournamentMatch::query()->findOrFail($value));
 
         $this->registerStateCacheInvalidation();
+        $this->registerTournamentCacheInvalidation();
     }
 
     /**
@@ -110,5 +129,30 @@ class AppServiceProvider extends ServiceProvider
         $this->app->terminating(function (): void {
             $this->app->make(SessionCacheInvalidator::class)->flush();
         });
+    }
+
+    private function registerTournamentCacheInvalidation(): void
+    {
+        $invalidate = function (?int $tournamentId): void {
+            if ($tournamentId !== null) {
+                TournamentStateService::invalidate($tournamentId);
+            }
+        };
+
+        Tournament::saved(fn (Tournament $tournament) => $invalidate((int) $tournament->id));
+        Tournament::deleted(fn (Tournament $tournament) => $invalidate((int) $tournament->id));
+
+        foreach ([TournamentMatch::class] as $modelClass) {
+            $modelClass::saved(function (Model $model) use ($invalidate): void {
+                $invalidate($model->getAttribute('tournament_id') !== null
+                    ? (int) $model->getAttribute('tournament_id')
+                    : null);
+            });
+            $modelClass::deleted(function (Model $model) use ($invalidate): void {
+                $invalidate($model->getAttribute('tournament_id') !== null
+                    ? (int) $model->getAttribute('tournament_id')
+                    : null);
+            });
+        }
     }
 }
