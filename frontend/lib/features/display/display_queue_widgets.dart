@@ -371,7 +371,7 @@ class DisplayQueuePlayerTile extends StatelessWidget {
 }
 
 class DisplayQueueEmptySlot extends StatelessWidget {
-  const DisplayQueueEmptySlot({this.compact = false});
+  const DisplayQueueEmptySlot({super.key, this.compact = false});
 
   final bool compact;
 

@@ -2403,7 +2403,7 @@ class _CreateTournamentDialogState extends State<_CreateTournamentDialog> {
   final _groupCountController = TextEditingController(text: '4');
   final _selected = <String>{};
   int _groupCount = 4;
-  int _courtCount = 4;
+  final int _courtCount = 4;
   int _divisionIndex = 0;
 
   @override
