@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../core/config.dart';
 import '../../core/match_modes.dart';
@@ -71,8 +72,10 @@ class _AdminPageState extends State<AdminPage> {
     _controller.retain();
     _controller.setAdminPin(rpcAdminPinController.pin);
     rpcAdminPinController.addListener(_onAdminPinChanged);
-    _controller.initialize();
     _controller.addListener(_onControllerUpdate);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _controller.initialize();
+    });
     _loadPresets();
   }
 
@@ -129,7 +132,16 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
-  void _onControllerUpdate() => setState(() {});
+  void _onControllerUpdate() {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase != SchedulerPhase.idle) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
+      return;
+    }
+    setState(() {});
+  }
 
   @override
   void dispose() {
