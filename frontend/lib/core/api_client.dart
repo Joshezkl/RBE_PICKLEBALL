@@ -139,13 +139,24 @@ class ApiClient {
   }
 
   Future<SessionState> getSessionStateLive(int sessionId) async {
+    final cacheKey = 'sessions/$sessionId/live';
+    final cacheTtl = AppConfig.livePollCacheTtl;
+    if (cacheTtl > Duration.zero) {
+      final cached = DataCache.get<SessionState>(cacheKey, cacheTtl);
+      if (cached != null) return cached;
+    }
+
     final response = await _getPoll(
       Uri.parse('${AppConfig.apiBaseUrl}/sessions/$sessionId/live'),
     );
     _throwOnError(response);
-    return SessionState.fromJson(
+    final state = SessionState.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
+    if (cacheTtl > Duration.zero) {
+      DataCache.set(cacheKey, state);
+    }
+    return state;
   }
 
   Future<SessionState> startSession({

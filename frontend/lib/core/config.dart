@@ -1,7 +1,27 @@
+import 'package:flutter/foundation.dart';
+
+import 'dev_api_host.dart';
+import 'production_api.dart';
 import 'runtime_config_stub.dart'
     if (dart.library.js_interop) 'runtime_config_web.dart' as runtime_config;
 
 class AppConfig {
+  static String get _devApiFallback {
+    if (kIsWeb) return 'http://localhost:8000/api';
+
+    // Mobile/desktop native apps use the hosted API unless explicitly
+    // opted into local backend development.
+    if (!useLocalApi) return productionApiBaseUrl;
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final host = devApiHost.trim();
+      if (host.isNotEmpty) return 'http://$host:8000/api';
+      return 'http://10.0.2.2:8000/api';
+    }
+
+    return 'http://localhost:8000/api';
+  }
+
   static const String _compileTimeApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: '',
@@ -28,7 +48,7 @@ class AppConfig {
       _resolveValue(
         runtimeKey: 'apiBaseUrl',
         compileTime: _compileTimeApiBaseUrl,
-        devFallback: 'http://localhost:8000/api',
+        devFallback: _devApiFallback,
       ),
     ),
   );
@@ -58,11 +78,14 @@ class AppConfig {
     return 'ws';
   }
 
-  /// True when the app is served from Vercel or uses a same-origin /api path.
+  /// True when using the hosted API (Vercel) or a same-origin /api path.
   static bool get isDeployed {
     final page = Uri.base;
     if (page.host.endsWith('.vercel.app')) return true;
-    return apiBaseUrl.startsWith('/');
+    if (apiBaseUrl.startsWith('/')) return true;
+
+    final apiHost = Uri.tryParse(apiBaseUrl)?.host.toLowerCase() ?? '';
+    return apiHost.endsWith('.vercel.app');
   }
 
   /// WebSocket live updates are only useful when a Reverb host is configured.
@@ -82,17 +105,22 @@ class AppConfig {
   }
 
   static Duration get pollForegroundInterval =>
-      Duration(seconds: isDeployed ? 12 : 8);
+      Duration(seconds: isDeployed ? 20 : 8);
 
   static Duration get pollBackgroundInterval =>
-      Duration(seconds: isDeployed ? 30 : 20);
+      Duration(seconds: isDeployed ? 60 : 20);
 
   static Duration get pollLiveInterval =>
-      Duration(seconds: isDeployed ? 45 : 30);
+      Duration(seconds: isDeployed ? 60 : 30);
+
+  /// Short client-side cache for /live polls against serverless APIs.
+  static Duration get livePollCacheTtl =>
+      isDeployed ? const Duration(seconds: 6) : Duration.zero;
 
   /// How long screen navigation may reuse in-memory API/session data before
   /// refetching. Keeps admin tab switches instant while polling stays fresh.
-  static const Duration screenCacheTtl = Duration(seconds: 60);
+  static Duration get screenCacheTtl =>
+      isDeployed ? const Duration(seconds: 90) : const Duration(seconds: 60);
 
   static String _resolveValue({
     required String runtimeKey,

@@ -24,10 +24,10 @@ return [
     'cache' => [
         // Lightweight polling payload (/live). Kept well below the client poll
         // interval so each session rebuilds at most a few times per minute.
-        'live_ttl' => (int) env('RPC_LIVE_CACHE_TTL', 3),
+        'live_ttl' => (int) env('RPC_LIVE_CACHE_TTL', 5),
 
         // Heavy full state (/state, /sessions/active).
-        'state_ttl' => (int) env('RPC_STATE_CACHE_TTL', 5),
+        'state_ttl' => (int) env('RPC_STATE_CACHE_TTL', 8),
 
         // Leaderboards only change when a match is scored; they are also
         // invalidated on write, so a longer TTL is safe.

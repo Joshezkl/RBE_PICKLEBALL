@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 import '../../core/config.dart';
 import '../../core/match_modes.dart';
@@ -72,11 +71,10 @@ class _AdminPageState extends State<AdminPage> {
     _controller.retain();
     _controller.setAdminPin(rpcAdminPinController.pin);
     rpcAdminPinController.addListener(_onAdminPinChanged);
-    _controller.addListener(_onControllerUpdate);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _controller.initialize();
+      _loadPresets();
     });
-    _loadPresets();
   }
 
   void _onAdminPinChanged() {
@@ -132,21 +130,9 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
-  void _onControllerUpdate() {
-    if (!mounted) return;
-    if (SchedulerBinding.instance.schedulerPhase != SchedulerPhase.idle) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() {});
-      });
-      return;
-    }
-    setState(() {});
-  }
-
   @override
   void dispose() {
     rpcAdminPinController.removeListener(_onAdminPinChanged);
-    _controller.removeListener(_onControllerUpdate);
     _controller.release();
     _pinController.dispose();
     _sessionNameController.dispose();
@@ -155,7 +141,14 @@ class _AdminPageState extends State<AdminPage> {
   }
 
   Future<void> _startSession() async {
-    _controller.setAdminPin(_pinController.text.trim());
+    final pin = _pinController.text.trim();
+    if (pin.isEmpty) {
+      setState(() => _controller.error = 'Admin PIN is required to start a session');
+      return;
+    }
+
+    _controller.setAdminPin(pin);
+    rpcAdminPinController.setPin(pin);
     final mode = MatchModes.byId(_selectedMatchMode);
     await _controller.startSession(
       name: _sessionNameController.text.trim(),
@@ -166,6 +159,24 @@ class _AdminPageState extends State<AdminPage> {
       requirePayment: _requirePayment,
       sessionFeeCents: _sessionFeePesos * 100,
     );
+
+    if (!mounted) return;
+
+    if (_controller.error != null) {
+      final message = _controller.error!;
+      if (isAdminPinErrorMessage(message)) {
+        setState(() {});
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return;
+    }
+
+    if (_controller.state?.session.isActive == true) {
+      setState(() => _mobileTab = 0);
+    }
   }
 
   void _applyPreset(SessionPreset preset) {
@@ -404,49 +415,74 @@ class _AdminPageState extends State<AdminPage> {
 
   @override
   Widget build(BuildContext context) {
-    final state = _controller.state;
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) {
+        final state = _controller.state;
+        final isActive = state != null && state.session.isActive;
 
-    final isActive = state != null && state.session.isActive;
-
-    return RpcShell(
-      activeDestination: RpcNavDestination.dashboard,
-      pageTitle: isActive ? state.session.name : 'Queue Master',
-      pageSubtitle: isActive
-          ? '${state.session.matchModeLabel} · ${state.session.playFormat.toUpperCase()} · ${state.session.courtCount} courts'
-          : 'Choose a match mode and configure courts before opening play',
-      themeController: rpcThemeController,
-      adminPin: rpcAdminPinController.pin,
-      sessionId: state?.session.id,
-      navDestinations: adminNavDestinations,
-      maxWidth: 960,
-      loading: _controller.loading && state == null,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_controller.error != null &&
-              !isAdminPinErrorMessage(_controller.error))
-            RpcErrorBanner(
-              message: _controller.error!,
-              onDismiss: () {
-                _controller.error = null;
-                setState(() {});
-              },
-            ),
-          if (!isActive) ...[
-            _buildStartSessionCard(),
-            if (_controller.lastReport != null)
-              Padding(
-                padding: const EdgeInsets.only(top: RpcSpacing.md),
-                child: SessionReportView(report: _controller.lastReport!),
-              ),
-          ] else ...[
-            if (!rpcAdminPinController.isSet ||
-                isAdminPinErrorMessage(_controller.error))
-              _buildAdminPinPrompt(),
-            _buildActiveSessionBody(state),
-          ],
-        ],
-      ),
+        return RpcShell(
+          activeDestination: RpcNavDestination.dashboard,
+          pageTitle: isActive ? state.session.name : 'Queue Master',
+          pageSubtitle: isActive
+              ? '${state.session.matchModeLabel} · ${state.session.playFormat.toUpperCase()} · ${state.session.courtCount} courts'
+              : 'Choose a match mode and configure courts before opening play',
+          themeController: rpcThemeController,
+          adminPin: rpcAdminPinController.pin,
+          sessionId: state?.session.id,
+          navDestinations: adminNavDestinations,
+          maxWidth: 960,
+          loading: _controller.loading && state == null,
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_controller.error != null &&
+                  !isAdminPinErrorMessage(_controller.error))
+                RpcErrorBanner(
+                  message: _controller.error!,
+                  onDismiss: () {
+                    _controller.error = null;
+                    setState(() {});
+                  },
+                ),
+              if (!isActive) ...[
+                if (isAdminPinErrorMessage(_controller.error))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: RpcSpacing.sm),
+                    child: AdminPinEntry(
+                      controller: _pinController,
+                      compact: true,
+                      message: _controller.error,
+                      onChanged: (value) {
+                        rpcAdminPinController.setPin(value);
+                        _controller.setAdminPin(value);
+                        if (isAdminPinErrorMessage(_controller.error)) {
+                          _controller.error = null;
+                          setState(() {});
+                        }
+                      },
+                      onDismiss: () {
+                        _controller.error = null;
+                        setState(() {});
+                      },
+                    ),
+                  ),
+                _buildStartSessionCard(),
+                if (_controller.lastReport != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: RpcSpacing.md),
+                    child: SessionReportView(report: _controller.lastReport!),
+                  ),
+              ] else ...[
+                if (!rpcAdminPinController.isSet ||
+                    isAdminPinErrorMessage(_controller.error))
+                  _buildAdminPinPrompt(),
+                _buildActiveSessionBody(state),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -807,15 +843,22 @@ class _AdminPageState extends State<AdminPage> {
                     field(
                       TextField(
                         controller: _pinController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Admin PIN',
                           prefixIcon:
-                              Icon(Icons.lock_outline_rounded, size: 20),
+                              const Icon(Icons.lock_outline_rounded, size: 20),
+                          errorText: isAdminPinErrorMessage(_controller.error)
+                              ? _controller.error
+                              : null,
                         ),
                         obscureText: true,
                         onChanged: (value) {
                           rpcAdminPinController.setPin(value);
                           _controller.setAdminPin(value);
+                          if (isAdminPinErrorMessage(_controller.error)) {
+                            _controller.error = null;
+                            setState(() {});
+                          }
                         },
                       ),
                     ),

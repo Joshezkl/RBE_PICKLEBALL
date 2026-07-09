@@ -526,6 +526,46 @@ class SessionState {
 
   int get groupSize => session.playFormat == 'singles' ? 2 : 4;
 
+  /// Compact fingerprint for poll deduplication — skips UI rebuilds when
+  /// nothing visible changed between /live polls.
+  String get livePollSignature {
+    final buf = StringBuffer()
+      ..write(
+        '${session.status}|${session.autoAssignEnabled}|'
+        '${session.courtCount}|$completedMatchCount|'
+        '${challengeCourt.isOpen}|',
+      );
+
+    for (final court in courts) {
+      final match = court.match;
+      buf
+        ..write('c${court.id}:${court.status}:${court.currentMatchId}:')
+        ..write('${match?.status}:${match?.scoreA}:${match?.scoreB};');
+    }
+
+    final queueKeys = queues.keys.toList()..sort();
+    for (final key in queueKeys) {
+      buf.write('q$key:');
+      for (final player in queues[key]!) {
+        buf.write('${player.id}@${player.position},');
+      }
+      buf.write(';');
+    }
+
+    for (final group in upNext) {
+      buf.write('u${group.queueType}:');
+      for (final player in group.players) {
+        buf.write('${player.id},');
+      }
+      buf.write(';');
+    }
+
+    return buf.toString();
+  }
+
+  bool livePollEquals(SessionState other) =>
+      livePollSignature == other.livePollSignature;
+
   Set<String> get rosterPlayerNames {
     final names = <String>{};
     for (final player in allQueuedPlayers) {

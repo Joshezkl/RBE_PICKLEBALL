@@ -31,6 +31,7 @@ class SessionController extends ChangeNotifier {
   DateTime? _lastFetchAt;
   int _retainCount = 0;
   bool _noActiveSession = false;
+  int _stateEpoch = 0;
 
   bool get hasActiveSession => state?.session.isActive ?? false;
   bool get mutating => _mutating;
@@ -77,15 +78,23 @@ class SessionController extends ChangeNotifier {
       return;
     }
 
+    final epoch = ++_stateEpoch;
+
     loading = state == null && !_noActiveSession;
     error = null;
     notifyListeners();
 
     try {
       final active = await api.getActiveSession(force: force);
+      if (epoch != _stateEpoch) return;
+
       if (active == null) {
-        state = null;
-        _noActiveSession = true;
+        // A stale "no active session" response must not wipe a session that
+        // was started while this fetch was in flight.
+        if (state?.session.isActive != true) {
+          state = null;
+          _noActiveSession = true;
+        }
       } else {
         state = active;
         _noActiveSession = false;
@@ -93,16 +102,23 @@ class SessionController extends ChangeNotifier {
       _lastFetchAt = DateTime.now();
       _startLiveUpdates(readOnly: readOnly);
     } on ApiException catch (e) {
+      if (epoch != _stateEpoch) return;
       error = e.message;
-      state = null;
-      _noActiveSession = false;
-      _lastFetchAt = null;
+      if (state?.session.isActive != true) {
+        state = null;
+        _noActiveSession = false;
+        _lastFetchAt = null;
+      }
     } catch (e) {
+      if (epoch != _stateEpoch) return;
       error = e.toString();
-      state = null;
-      _noActiveSession = false;
-      _lastFetchAt = null;
+      if (state?.session.isActive != true) {
+        state = null;
+        _noActiveSession = false;
+        _lastFetchAt = null;
+      }
     } finally {
+      if (epoch != _stateEpoch) return;
       loading = false;
       notifyListeners();
     }
@@ -140,6 +156,16 @@ class SessionController extends ChangeNotifier {
     );
   }
 
+  void _notifyIfChanged() => notifyListeners();
+
+  void _applySessionState(SessionState next, {required bool compareLivePoll}) {
+    if (compareLivePoll && state?.livePollEquals(next) == true) {
+      return;
+    }
+    state = next;
+    _notifyIfChanged();
+  }
+
   Future<void> _pollSessionState(int sessionId) async {
     if (_mutating) return;
 
@@ -154,16 +180,19 @@ class SessionController extends ChangeNotifier {
       final needsFullRefresh =
           live.completedMatchCount != previous.completedMatchCount;
       if (needsFullRefresh) {
-        state = await api.getSessionState(sessionId);
-        notifyListeners();
+        _applySessionState(
+          await api.getSessionState(sessionId),
+          compareLivePoll: false,
+        );
         return;
       }
-      state = previous.mergeLivePoll(live, retainAdminExtras: true);
+      _applySessionState(
+        previous.mergeLivePoll(live, retainAdminExtras: true),
+        compareLivePoll: true,
+      );
     } else {
-      state = live;
+      _applySessionState(live, compareLivePoll: true);
     }
-
-    notifyListeners();
   }
 
   Future<void> startSession({
@@ -360,6 +389,7 @@ class SessionController extends ChangeNotifier {
   Future<bool> _mutate(Future<SessionState> Function() action) async {
     if (_mutating) return false;
 
+    _stateEpoch++;
     _mutating = true;
     _pollTimer?.pause();
     _syncAdminPinFromGlobal();
@@ -417,6 +447,7 @@ class SessionController extends ChangeNotifier {
   }
 
   Future<void> _run(Future<SessionState> Function() action) async {
+    _stateEpoch++;
     _syncAdminPinFromGlobal();
     loading = true;
     error = null;
